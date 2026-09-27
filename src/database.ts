@@ -7,7 +7,7 @@ import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog
 import { generateStudentQRToken } from './utils';
 
 const DB_NAME = 'SAMS_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for new settings store
 
 export class SAMSIndexedDB {
   private db: IDBDatabase | null = null;
@@ -49,6 +49,9 @@ export class SAMSIndexedDB {
         }
         if (!db.objectStoreNames.contains('logs')) {
           db.createObjectStore('logs', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'id' });
         }
       };
     });
@@ -250,6 +253,44 @@ export class SAMSIndexedDB {
     };
     return new Promise((resolve, reject) => {
       const request = store.put(log);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for School Settings (Multi-tenant support) ---
+  async getSettings(schoolId: string = 'default'): Promise<any | null> {
+    const store = await this.getStore('settings');
+    return new Promise((resolve, reject) => {
+      const request = store.get(schoolId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveSettings(settings: any, schoolId: string = 'default'): Promise<void> {
+    const store = await this.getStore('settings', 'readwrite');
+    const settingsWithId = { ...settings, id: schoolId };
+    return new Promise((resolve, reject) => {
+      const request = store.put(settingsWithId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getAllSchools(): Promise<any[]> {
+    const store = await this.getStore('settings');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteSchoolSettings(schoolId: string): Promise<void> {
+    const store = await this.getStore('settings', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(schoolId);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
@@ -488,7 +529,7 @@ export class SAMSIndexedDB {
   // Clear all database tables
   async resetDatabase(): Promise<void> {
     const db = await this.init();
-    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs'];
+    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings'];
     const transaction = db.transaction(stores, 'readwrite');
     
     stores.forEach((storeName) => {

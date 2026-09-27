@@ -29,6 +29,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { updateFavicon } from './utils';
 
 export default function App() {
   // DB and Load States
@@ -73,8 +74,9 @@ export default function App() {
       }
     }
     return {
-      schoolName: ' SHAAL Academy',
+      schoolName: 'SHAAL Academy',
       schoolLogo: '🎓',
+      schoolLogoImage: undefined,
       theme: 'light',
       academicYear: '2026-2027'
     };
@@ -100,6 +102,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings.theme === 'dark');
   }, [settings.theme]);
+
+  // Update favicon when logo changes
+  useEffect(() => {
+    const logoToUse = settings.schoolLogoImage || settings.schoolLogo;
+    updateFavicon(logoToUse);
+  }, [settings.schoolLogoImage, settings.schoolLogo]);
 
   // Fetch all tables from IndexedDB
   const loadAllData = async () => {
@@ -152,6 +160,12 @@ export default function App() {
 
     if (newSettings.theme) {
       document.documentElement.classList.toggle('dark', newSettings.theme === 'dark');
+    }
+
+    // Update favicon if logo changed
+    if (newSettings.schoolLogoImage !== undefined || newSettings.schoolLogo) {
+      const logoToUse = newSettings.schoolLogoImage || updated.schoolLogoImage || updated.schoolLogo;
+      updateFavicon(logoToUse);
     }
 
     await dbInstance.addLog('Settings Configured', 'Institution branded identity settings parameters modified.');
@@ -463,12 +477,15 @@ export default function App() {
     try {
       await dbInstance.resetDatabase();
       localStorage.removeItem('sams_settings');
-      setSettings({
-        schoolName: 'SAMS Academy',
+      const defaultSettings = {
+        schoolName: 'SHAAL Academy',
         schoolLogo: '🎓',
-        theme: 'light',
+        schoolLogoImage: undefined,
+        theme: 'light' as const,
         academicYear: '2026-2027',
-      });
+      };
+      setSettings(defaultSettings);
+      updateFavicon(defaultSettings.schoolLogo);
       await dbInstance.seedIfEmpty();
       await loadAllData();
       triggerToast('success', 'System tables purged and reset to standard demonstration values.');

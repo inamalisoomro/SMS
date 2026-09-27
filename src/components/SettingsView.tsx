@@ -15,9 +15,12 @@ import {
   AlertTriangle,
   RefreshCw,
   Sun,
-  Moon
+  Moon,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { AppSettings } from '../types';
+import { validateImageFile, resizeAndEncodeImage } from '../utils';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -36,6 +39,7 @@ export default function SettingsView({
 }: SettingsViewProps) {
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [schoolLogo, setSchoolLogo] = useState(settings.schoolLogo);
+  const [schoolLogoImage, setSchoolLogoImage] = useState(settings.schoolLogoImage || '');
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
   const [schoolAddress, setSchoolAddress] = useState(settings.schoolAddress || '100 Campus Parkway, Education District');
   const [schoolPhone, setSchoolPhone] = useState(settings.schoolPhone || '+1 (555) 019-2834');
@@ -44,12 +48,17 @@ export default function SettingsView({
   // Form submit status
   const [isSaved, setIsSaved] = useState(false);
 
+  // Logo upload states
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState('');
+
   // Reset verification
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
   // Refs
   const importFileRef = useRef<HTMLInputElement>(null);
+  const logoFileRef = useRef<HTMLInputElement>(null);
 
   // Logo emojis palette
   const logoPalette = ['🎓', '🏫', '🏛️', '🌟', '📚', '⚡', '🦁', '🦅', '🎯', '💡'];
@@ -59,6 +68,7 @@ export default function SettingsView({
     await onSaveSettings({
       schoolName: schoolName.trim(),
       schoolLogo,
+      schoolLogoImage,
       academicYear,
       schoolAddress: schoolAddress.trim(),
       schoolPhone: schoolPhone.trim(),
@@ -66,6 +76,42 @@ export default function SettingsView({
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLogoUploadError('');
+    setIsUploadingLogo(true);
+
+    try {
+      // Validate file
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setLogoUploadError(validation.error || 'Invalid file');
+        setIsUploadingLogo(false);
+        return;
+      }
+
+      // Resize and encode
+      const base64Image = await resizeAndEncodeImage(file, 512);
+      setSchoolLogoImage(base64Image);
+      setLogoUploadError('');
+    } catch (error) {
+      console.error('Logo upload error:', error);
+      setLogoUploadError('Failed to process image. Please try another file.');
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoFileRef.current) {
+        logoFileRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setSchoolLogoImage('');
+    setLogoUploadError('');
   };
 
   const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,7 +207,82 @@ export default function SettingsView({
             {/* Logo Emoji Palette */}
             <div>
               <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">School Logo / Icon</label>
-              <div className="flex flex-wrap gap-1.5 mb-1 p-1.5 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/80 rounded-lg">
+              
+              {/* Custom Logo Upload Section */}
+              <div className="mb-3 p-3 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/80 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon size={14} className="text-indigo-500" />
+                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Custom Logo Upload</span>
+                </div>
+                
+                {schoolLogoImage ? (
+                  // Logo Preview
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-20 h-20 rounded-lg border-2 border-indigo-500/30 bg-white dark:bg-slate-900 p-1 flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={schoolLogoImage} 
+                        alt="School Logo" 
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold mb-1">✓ Custom logo uploaded</p>
+                      <p className="text-[8px] text-slate-400 mb-2">This logo will appear in sidebar, favicon, certificates & ID cards</p>
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 rounded hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
+                      >
+                        <X size={10} /> Remove Logo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // Upload Button
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => logoFileRef.current?.click()}
+                      disabled={isUploadingLogo}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-all text-slate-600 dark:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUploadingLogo ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span className="text-xs font-semibold">Processing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={14} />
+                          <span className="text-xs font-semibold">Upload School Logo</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[8px] text-slate-400 mt-1 text-center">PNG, JPG, GIF, WEBP, SVG • Max 5MB • Recommended: 512x512px</p>
+                  </div>
+                )}
+                
+                {logoUploadError && (
+                  <div className="mt-2 p-2 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 rounded text-[9px] text-rose-600 dark:text-rose-400 flex items-start gap-1">
+                    <AlertTriangle size={10} className="flex-shrink-0 mt-0.5" />
+                    <span>{logoUploadError}</span>
+                  </div>
+                )}
+                
+                <input
+                  type="file"
+                  ref={logoFileRef}
+                  onChange={handleLogoFileChange}
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/svg+xml"
+                  className="hidden"
+                />
+              </div>
+
+              {/* Emoji Fallback Option */}
+              <div className="mb-1">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wide font-mono">Or use emoji fallback:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 p-1.5 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/80 rounded-lg">
                 {logoPalette.map(emoji => (
                   <button
                     key={emoji}

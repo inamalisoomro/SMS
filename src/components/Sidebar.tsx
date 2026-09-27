@@ -64,7 +64,17 @@ export default function Sidebar({
       {/* Mobile Header Overlay Trigger */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-800/50 sticky top-0 z-30">
         <div className="flex items-center gap-2.5">
-          <span className="text-2xl">{settings.schoolLogo || '🎓'}</span>
+          {settings.schoolLogoImage ? (
+            <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-0.5 flex items-center justify-center overflow-hidden">
+              <img 
+                src={settings.schoolLogoImage} 
+                alt={settings.schoolName || 'School Logo'} 
+                className="w-full h-full object-contain"
+              />
+            </div>
+          ) : (
+            <span className="text-2xl">{settings.schoolLogo || '🎓'}</span>
+          )}
           <h1 className="font-sans font-bold text-slate-800 dark:text-slate-200 text-base truncate max-w-[200px]">
             {settings.schoolName || 'SAMS School'}
           </h1>
@@ -105,9 +115,19 @@ export default function Sidebar({
         {/* Header Branding - Desktop */}
         <div className="hidden md:flex items-center justify-between pb-3.5 mb-2.5 border-b border-slate-200/40 dark:border-slate-800/40">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center text-xl shadow-inner shadow-indigo-200/50 dark:shadow-none">
-              {settings.schoolLogo || '🎓'}
-            </div>
+            {settings.schoolLogoImage ? (
+              <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-0.5 flex items-center justify-center overflow-hidden shadow-sm">
+                <img 
+                  src={settings.schoolLogoImage} 
+                  alt={settings.schoolName || 'School Logo'} 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center text-xl shadow-inner shadow-indigo-200/50 dark:shadow-none">
+                {settings.schoolLogo || '🎓'}
+              </div>
+            )}
             <div className="overflow-hidden">
               <h1 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight truncate w-36">
                 {settings.schoolName || 'SAMS School'}

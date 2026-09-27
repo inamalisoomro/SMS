@@ -51,7 +51,8 @@ export interface AttendanceRecord {
 
 export interface AppSettings {
   schoolName: string;
-  schoolLogo: string; // base64 or emoji
+  schoolLogo: string; // emoji fallback
+  schoolLogoImage?: string; // base64 encoded custom uploaded image
   theme: 'light' | 'dark';
   academicYear: string;
   schoolAddress?: string;

@@ -346,3 +346,166 @@ export function generateQRCodeSVG(value: string): string {
   svgHtml += `</svg>`;
   return svgHtml;
 }
+
+// ==================== LOGO MANAGEMENT UTILITIES ====================
+
+/**
+ * Validates if the file is a valid image type
+ * @param file - File to validate
+ * @returns true if valid image, false otherwise
+ */
+export function validateImageFile(file: File): { valid: boolean; error?: string } {
+  const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const maxSize = 5 * 1024 * 1024; // 5MB
+
+  if (!validTypes.includes(file.type)) {
+    return {
+      valid: false,
+      error: 'Invalid file type. Please upload PNG, JPG, GIF, WEBP, or SVG images only.'
+    };
+  }
+
+  if (file.size > maxSize) {
+    return {
+      valid: false,
+      error: 'File size exceeds 5MB limit. Please choose a smaller image.'
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Resize image to a maximum dimension while maintaining aspect ratio
+ * @param file - Image file to resize
+ * @param maxDimension - Maximum width/height (default: 512px)
+ * @returns Promise resolving to base64 encoded resized image
+ */
+export function resizeAndEncodeImage(file: File, maxDimension: number = 512): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions maintaining aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        
+        // Create canvas and draw resized image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        // Use high-quality image rendering
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to base64 (JPEG for smaller file size, PNG for transparency)
+        const mimeType = file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/webp'
+          ? 'image/png'
+          : 'image/jpeg';
+        const quality = 0.9;
+        
+        const base64 = canvas.toDataURL(mimeType, quality);
+        resolve(base64);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = e.target?.result as string;
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+    
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Update the browser favicon dynamically
+ * @param logoData - Base64 encoded image string or emoji
+ */
+export function updateFavicon(logoData: string) {
+  // Remove existing favicon links
+  const existingFavicons = document.querySelectorAll('link[rel*="icon"]');
+  existingFavicons.forEach(link => link.remove());
+  
+  // If it's an emoji, convert to canvas-based favicon
+  if (logoData.length <= 4 && !logoData.startsWith('data:')) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    if (ctx) {
+      ctx.fillStyle = '#4f46e5'; // indigo background
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.font = 'bold 40px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(logoData, 32, 34);
+      
+      const faviconUrl = canvas.toDataURL('image/png');
+      addFaviconLink(faviconUrl);
+    }
+  } else if (logoData.startsWith('data:')) {
+    // Use the uploaded image directly
+    addFaviconLink(logoData);
+  }
+}
+
+/**
+ * Helper to add favicon link to document head
+ */
+function addFaviconLink(href: string) {
+  const link = document.createElement('link');
+  link.rel = 'icon';
+  link.type = 'image/png';
+  link.href = href;
+  document.head.appendChild(link);
+  
+  // Also add apple-touch-icon for iOS
+  const appleLink = document.createElement('link');
+  appleLink.rel = 'apple-touch-icon';
+  appleLink.href = href;
+  document.head.appendChild(appleLink);
+}
+
+/**
+ * Convert a File object to base64 string
+ * @param file - File to convert
+ * @returns Promise resolving to base64 string
+ */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+    reader.readAsDataURL(file);
+  });
+}
