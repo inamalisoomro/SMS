@@ -73,7 +73,7 @@ export default function App() {
       }
     }
     return {
-      schoolName: 'SAMS Academy',
+      schoolName: ' SHAAL Academy',
       schoolLogo: '🎓',
       theme: 'light',
       academicYear: '2026-2027'
