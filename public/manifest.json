@@ -1,0 +1,24 @@
+{
+  "short_name": "SAMS",
+  "name": "Student Attendance Management System",
+  "description": "An offline-first, browser-only Student Attendance Management System (SAMS) with IndexedDB persistence, interactive custom analytics, printable ID badges, and a premium glassmorphism user interface.",
+  "icons": [
+    {
+      "src": "https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=SAMS_PWA",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=SAMS_PWA",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "any"
+}

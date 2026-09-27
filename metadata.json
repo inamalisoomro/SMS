@@ -1,0 +1,6 @@
+{
+  "name": "Student Attendance System",
+  "description": "A comprehensive, offline-first Student Attendance Management System (SAMS) with IndexedDB persistence, premium glassmorphism UI, advanced interactive analytics, digital ID cards, and PWA capabilities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
