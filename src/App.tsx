@@ -72,7 +72,7 @@ export default function App() {
       }
     }
     return {
-      schoolName: ' Nisar Academy',
+      schoolName: ' SHAAL Academy',
       schoolLogo: '🎓',
       theme: 'light',
       academicYear: '2026-2027'
