@@ -3,6 +3,138 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import QRCode from 'qrcode';
+
+// Secret key initialization for token signing
+function getAppSecret(): string {
+  let secret = localStorage.getItem('sams_qr_secret');
+  if (!secret) {
+    secret = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)) + '-' + Date.now().toString(36);
+    localStorage.setItem('sams_qr_secret', secret);
+  }
+  return secret;
+}
+
+// Generate an opaque, unique signed token for student QR codes
+// Never encodes plain student name or roll number!
+export function generateStudentQRToken(studentId?: string): string {
+  const secret = getAppSecret();
+  const rawId = studentId || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
+  const randSalt = Math.random().toString(36).substring(2, 8);
+  const time = Date.now().toString(36);
+  
+  // Simple fast hash of secret + rawId + salt
+  let hash = 0;
+  const combined = `${secret}:${rawId}:${randSalt}:${time}`;
+  for (let i = 0; i < combined.length; i++) {
+    hash = ((hash << 5) - hash + combined.charCodeAt(i)) | 0;
+  }
+  const hashHex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `sams_tok_${hashHex}_${randSalt}_${time}`;
+}
+
+// Generate valid standard ISO/IEC 18004 QR Code as base64 Data URL
+export async function generateQRCodeDataURL(value: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(value, {
+      margin: 1,
+      width: 300,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    });
+  } catch (err) {
+    console.error('Failed to generate QR code data URL:', err);
+    return '';
+  }
+}
+
+// Generate valid standard ISO QR Code as raw SVG string
+export async function generateQRCodeSVGString(value: string): Promise<string> {
+  try {
+    return await QRCode.toString(value, {
+      type: 'svg',
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    });
+  } catch (err) {
+    console.error('Failed to generate QR SVG string:', err);
+    return '';
+  }
+}
+
+// Synthesized audio feedback for QR Attendance Scanning (offline Web Audio API)
+export function playScanSound(type: 'success' | 'duplicate' | 'error') {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+
+    if (type === 'success') {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(659.25, ctx.currentTime); // E5
+      osc1.frequency.setValueAtTime(880.0, ctx.currentTime + 0.08); // A5
+
+      osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + 0.08); // E6
+
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(ctx.currentTime);
+      osc2.start(ctx.currentTime + 0.08);
+      osc1.stop(ctx.currentTime + 0.35);
+      osc2.stop(ctx.currentTime + 0.35);
+    } else if (type === 'duplicate') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(349.23, ctx.currentTime + 0.12);
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    } else {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    }
+  } catch (e) {
+    // Audio contexts can be restricted by browser until first user action
+  }
+}
+
 // Utility for CSV Export
 export function exportToCSV(headers: string[], rows: string[][], filename: string) {
   const csvContent = [

@@ -28,3 +28,58 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Print Styles for Student CR80 ID Badges */
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide navigation, sidebars, interactive controls, toolbars, and modal backdrops */
+  aside, 
+  nav, 
+  header, 
+  .print\:hidden,
+  button,
+  input,
+  select,
+  .backdrop-blur-xs,
+  .backdrop-blur-md {
+    display: none !important;
+    background: transparent !important;
+  }
+
+  /* Prevent fixed modal background from darkening the print page */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  /* CR80 cards preserve graphics and avoid bad page breaks */
+  .student-cr80-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 4mm auto !important;
+  }
+
+  #printable-batch-area {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8mm !important;
+    padding: 8mm !important;
+    background: transparent !important;
+  }
+}

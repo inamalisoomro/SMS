@@ -1,6 +1,6 @@
 {
   "name": "Student Attendance System",
-  "description": "A comprehensive, offline-first Student Attendance Management System (SAMS) with IndexedDB persistence, premium glassmorphism UI, advanced interactive analytics, digital ID cards, and PWA capabilities.",
-  "requestFramePermissions": [],
+  "description": "A comprehensive, offline-first Student Attendance Management System (SAMS) with IndexedDB persistence, CR80 digital student ID cards with secure QR tokens, live webcam QR attendance scanning with duplicate protection, and batch card generation.",
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

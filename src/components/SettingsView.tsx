@@ -37,6 +37,8 @@ export default function SettingsView({
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [schoolLogo, setSchoolLogo] = useState(settings.schoolLogo);
   const [academicYear, setAcademicYear] = useState(settings.academicYear);
+  const [schoolAddress, setSchoolAddress] = useState(settings.schoolAddress || '100 Campus Parkway, Education District');
+  const [schoolPhone, setSchoolPhone] = useState(settings.schoolPhone || '+1 (555) 019-2834');
   const [activeTheme, setActiveTheme] = useState(settings.theme);
 
   // Form submit status
@@ -58,6 +60,8 @@ export default function SettingsView({
       schoolName: schoolName.trim(),
       schoolLogo,
       academicYear,
+      schoolAddress: schoolAddress.trim(),
+      schoolPhone: schoolPhone.trim(),
       theme: activeTheme
     });
     setIsSaved(true);
@@ -127,6 +131,31 @@ export default function SettingsView({
                 placeholder="e.g. 2026-2027"
                 className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
               />
+            </div>
+
+            {/* School Address & Contact for ID Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Campus Address (ID Card Footer)</label>
+                <input
+                  type="text"
+                  value={schoolAddress}
+                  onChange={(e) => setSchoolAddress(e.target.value)}
+                  placeholder="e.g. 100 Campus Parkway"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Institution Phone Number</label>
+                <input
+                  type="text"
+                  value={schoolPhone}
+                  onChange={(e) => setSchoolPhone(e.target.value)}
+                  placeholder="e.g. +1 (555) 019-2834"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                />
+              </div>
             </div>
 
             {/* Logo Emoji Palette */}

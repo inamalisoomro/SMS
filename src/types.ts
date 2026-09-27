@@ -13,6 +13,14 @@ export interface Student {
   contactNumber: string;
   email?: string;
   photo?: string; // base64 string
+  fatherName?: string;
+  motherName?: string;
+  bloodGroup?: string;
+  dateOfBirth?: string;
+  admissionDate?: string;
+  cardValidUntil?: string; // e.g. end of academic year
+  qrToken: string; // unique signed opaque token
+  cardIssuedAt?: string;
 }
 
 export interface Class {
@@ -38,6 +46,7 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   notes?: string;
   updatedAt: number;
+  markedVia?: 'manual' | 'qr_scan';
 }
 
 export interface AppSettings {
@@ -45,6 +54,9 @@ export interface AppSettings {
   schoolLogo: string; // base64 or emoji
   theme: 'light' | 'dark';
   academicYear: string;
+  schoolAddress?: string;
+  schoolPhone?: string;
+  principalSignature?: string; // base64 image, optional
 }
 
 export interface AcademicSession {

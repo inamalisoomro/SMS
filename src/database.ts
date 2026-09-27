@@ -4,6 +4,7 @@
  */
 
 import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog } from './types';
+import { generateStudentQRToken } from './utils';
 
 const DB_NAME = 'SAMS_DB';
 const DB_VERSION = 1;
@@ -64,12 +65,34 @@ export class SAMSIndexedDB {
     const store = await this.getStore('students');
     return new Promise((resolve, reject) => {
       const request = store.getAll();
-      request.onsuccess = () => resolve(request.result || []);
+      request.onsuccess = async () => {
+        const students: Student[] = request.result || [];
+        // Migration check: ensure every student has a valid qrToken and card validity
+        let hasMissing = false;
+        for (const st of students) {
+          if (!st.qrToken) {
+            st.qrToken = generateStudentQRToken(st.id);
+            if (!st.cardValidUntil) st.cardValidUntil = '2027-06-30';
+            if (!st.cardIssuedAt) st.cardIssuedAt = new Date().toISOString().split('T')[0];
+            if (!st.bloodGroup) st.bloodGroup = 'O+';
+            hasMissing = true;
+          }
+        }
+        if (hasMissing) {
+          for (const st of students) {
+            await this.saveStudent(st);
+          }
+        }
+        resolve(students);
+      };
       request.onerror = () => reject(request.error);
     });
   }
 
   async saveStudent(student: Student): Promise<void> {
+    if (!student.qrToken) {
+      student.qrToken = generateStudentQRToken(student.id);
+    }
     const store = await this.getStore('students', 'readwrite');
     return new Promise((resolve, reject) => {
       const request = store.put(student);
@@ -264,16 +287,150 @@ export class SAMSIndexedDB {
 
     // 3. Seed Students
     const defaultStudents: Student[] = [
-      { id: 'st1', studentId: 'ST-2026-001', name: 'Alexander Wright', rollNumber: '01', classId: 'c1', section: 'A', contactNumber: '+1 555-0101', email: 'alex.wright@school.edu' },
-      { id: 'st2', studentId: 'ST-2026-002', name: 'Sophia Martinez', rollNumber: '02', classId: 'c1', section: 'A', contactNumber: '+1 555-0102', email: 'sophia.m@school.edu' },
-      { id: 'st3', studentId: 'ST-2026-003', name: 'Liam Gallagher', rollNumber: '03', classId: 'c1', section: 'A', contactNumber: '+1 555-0103', email: 'liam.g@school.edu' },
-      { id: 'st4', studentId: 'ST-2026-004', name: 'Emma Watson', rollNumber: '04', classId: 'c1', section: 'A', contactNumber: '+1 555-0104', email: 'emma.w@school.edu' },
-      
-      { id: 'st5', studentId: 'ST-2026-005', name: 'Benjamin Carter', rollNumber: '01', classId: 'c2', section: 'B', contactNumber: '+1 555-0105', email: 'ben.carter@school.edu' },
-      { id: 'st6', studentId: 'ST-2026-006', name: 'Olivia Rose', rollNumber: '02', classId: 'c2', section: 'B', contactNumber: '+1 555-0106', email: 'olivia.rose@school.edu' },
-      
-      { id: 'st7', studentId: 'ST-2026-007', name: 'Ethan Hunt', rollNumber: '01', classId: 'c3', section: 'A', contactNumber: '+1 555-0107', email: 'ethan.hunt@school.edu' },
-      { id: 'st8', studentId: 'ST-2026-008', name: 'Ava Duvernay', rollNumber: '02', classId: 'c3', section: 'A', contactNumber: '+1 555-0108', email: 'ava.d@school.edu' },
+      { 
+        id: 'st1', 
+        studentId: 'ST-2026-001', 
+        name: 'Alexander Wright', 
+        rollNumber: '01', 
+        classId: 'c1', 
+        section: 'A', 
+        contactNumber: '+1 555-0101', 
+        email: 'alex.wright@school.edu',
+        fatherName: 'Thomas Wright',
+        motherName: 'Eleanor Wright',
+        bloodGroup: 'O+',
+        dateOfBirth: '2010-04-12',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st1')
+      },
+      { 
+        id: 'st2', 
+        studentId: 'ST-2026-002', 
+        name: 'Sophia Martinez', 
+        rollNumber: '02', 
+        classId: 'c1', 
+        section: 'A', 
+        contactNumber: '+1 555-0102', 
+        email: 'sophia.m@school.edu',
+        fatherName: 'Carlos Martinez',
+        motherName: 'Maria Martinez',
+        bloodGroup: 'A+',
+        dateOfBirth: '2010-08-23',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st2')
+      },
+      { 
+        id: 'st3', 
+        studentId: 'ST-2026-003', 
+        name: 'Liam Gallagher', 
+        rollNumber: '03', 
+        classId: 'c1', 
+        section: 'A', 
+        contactNumber: '+1 555-0103', 
+        email: 'liam.g@school.edu',
+        fatherName: 'Arthur Gallagher',
+        motherName: 'Clara Gallagher',
+        bloodGroup: 'B+',
+        dateOfBirth: '2010-11-05',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st3')
+      },
+      { 
+        id: 'st4', 
+        studentId: 'ST-2026-004', 
+        name: 'Emma Watson', 
+        rollNumber: '04', 
+        classId: 'c1', 
+        section: 'A', 
+        contactNumber: '+1 555-0104', 
+        email: 'emma.w@school.edu',
+        fatherName: 'Richard Watson',
+        motherName: 'Jacqueline Watson',
+        bloodGroup: 'AB+',
+        dateOfBirth: '2010-02-18',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st4')
+      },
+      { 
+        id: 'st5', 
+        studentId: 'ST-2026-005', 
+        name: 'Benjamin Carter', 
+        rollNumber: '01', 
+        classId: 'c2', 
+        section: 'B', 
+        contactNumber: '+1 555-0105', 
+        email: 'ben.carter@school.edu',
+        fatherName: 'Samuel Carter',
+        motherName: 'Rebecca Carter',
+        bloodGroup: 'O-',
+        dateOfBirth: '2010-09-14',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st5')
+      },
+      { 
+        id: 'st6', 
+        studentId: 'ST-2026-006', 
+        name: 'Olivia Rose', 
+        rollNumber: '02', 
+        classId: 'c2', 
+        section: 'B', 
+        contactNumber: '+1 555-0106', 
+        email: 'olivia.rose@school.edu',
+        fatherName: 'Henry Rose',
+        motherName: 'Grace Rose',
+        bloodGroup: 'A-',
+        dateOfBirth: '2010-06-30',
+        admissionDate: '2024-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st6')
+      },
+      { 
+        id: 'st7', 
+        studentId: 'ST-2026-007', 
+        name: 'Ethan Hunt', 
+        rollNumber: '01', 
+        classId: 'c3', 
+        section: 'A', 
+        contactNumber: '+1 555-0107', 
+        email: 'ethan.hunt@school.edu',
+        fatherName: 'Nathan Hunt',
+        motherName: 'Julia Hunt',
+        bloodGroup: 'B-',
+        dateOfBirth: '2009-01-20',
+        admissionDate: '2023-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st7')
+      },
+      { 
+        id: 'st8', 
+        studentId: 'ST-2026-008', 
+        name: 'Ava Duvernay', 
+        rollNumber: '02', 
+        classId: 'c3', 
+        section: 'A', 
+        contactNumber: '+1 555-0108', 
+        email: 'ava.d@school.edu',
+        fatherName: 'Marcus Duvernay',
+        motherName: 'Lynette Duvernay',
+        bloodGroup: 'O+',
+        dateOfBirth: '2009-07-11',
+        admissionDate: '2023-08-15',
+        cardValidUntil: '2027-06-30',
+        cardIssuedAt: '2026-09-01',
+        qrToken: generateStudentQRToken('st8')
+      },
     ];
     for (const st of defaultStudents) {
       await this.saveStudent(st);

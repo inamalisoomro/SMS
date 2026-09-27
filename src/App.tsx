@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbInstance } from './database';
 import { Student, Class, Subject, AttendanceRecord, AppSettings, ActivityLog } from './types';
+import { generateStudentQRToken } from './utils';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import StudentsView from './components/StudentsView';
@@ -200,6 +201,33 @@ export default function App() {
       });
     } catch (err) {
       triggerToast('error', 'Failed to delete student.');
+    }
+  };
+
+  // --- REISSUE STUDENT DIGITAL CARD (NEW QR TOKEN) ---
+  const handleReissueStudentToken = async (studentId: string): Promise<Student | undefined> => {
+    try {
+      const student = students.find((s) => s.id === studentId);
+      if (!student) return undefined;
+
+      const newToken = generateStudentQRToken(student.id);
+      const updatedStudent: Student = {
+        ...student,
+        qrToken: newToken,
+        cardIssuedAt: new Date().toISOString().split('T')[0],
+      };
+
+      await dbInstance.saveStudent(updatedStudent);
+      await dbInstance.addLog(
+        'Pass Reissued',
+        `Re-generated secure QR token for pupil ${student.name}. Previous physical pass invalidated.`
+      );
+      await loadAllData();
+      triggerToast('success', `New ID pass generated for ${student.name}! Old QR pass is now expired.`);
+      return updatedStudent;
+    } catch (err) {
+      triggerToast('error', 'Failed to reissue student digital pass.');
+      return undefined;
     }
   };
 
@@ -468,10 +496,12 @@ export default function App() {
           <StudentsView
             students={students}
             classes={classes}
+            settings={settings}
             onAddStudent={handleAddStudent}
             onUpdateStudent={handleUpdateStudent}
             onDeleteStudent={handleDeleteStudent}
             onImportStudents={handleImportStudents}
+            onReissueToken={handleReissueStudentToken}
           />
         );
       case 'classes':

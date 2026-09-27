@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
   Search, 
-  Filter, 
   Trash2, 
   Edit, 
   Download, 
@@ -18,28 +17,37 @@ import {
   CreditCard,
   Printer,
   ChevronDown,
-  RefreshCw,
-  MoreVertical
+  Layers,
+  Camera,
+  Droplet,
+  FileText,
+  Loader2
 } from 'lucide-react';
-import { Student, Class } from '../types';
-import { exportToCSV, parseCSV, generateBarcodeSVG, generateQRCodeSVG } from '../utils';
+import { Student, Class, AppSettings } from '../types';
+import { exportToCSV, parseCSV, generateStudentQRToken } from '../utils';
+import { downloadBatchCardsPDF } from '../utils/idCardExport';
+import StudentCard from './StudentCard';
 
 interface StudentsViewProps {
   students: Student[];
   classes: Class[];
+  settings: AppSettings;
   onAddStudent: (student: Omit<Student, 'id'>) => Promise<void>;
   onUpdateStudent: (student: Student) => Promise<void>;
   onDeleteStudent: (id: string) => Promise<void>;
   onImportStudents: (students: Omit<Student, 'id'>[]) => Promise<void>;
+  onReissueToken: (studentId: string) => Promise<Student | undefined | void>;
 }
 
 export default function StudentsView({
   students,
   classes,
+  settings,
   onAddStudent,
   onUpdateStudent,
   onDeleteStudent,
-  onImportStudents
+  onImportStudents,
+  onReissueToken,
 }: StudentsViewProps) {
   // Navigation & filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,7 +59,13 @@ export default function StudentsView({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [isBatchCardsModalOpen, setIsBatchCardsModalOpen] = useState(false);
+  const [batchClassFilter, setBatchClassFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  // Batch Export PDF states
+  const [isExportingBatch, setIsExportingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -61,9 +75,17 @@ export default function StudentsView({
   const [formContact, setFormContact] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formStudentId, setFormStudentId] = useState('');
+  const [formFatherName, setFormFatherName] = useState('');
+  const [formMotherName, setFormMotherName] = useState('');
+  const [formBloodGroup, setFormBloodGroup] = useState('O+');
+  const [formDob, setFormDob] = useState('2010-01-01');
+  const [formAdmissionDate, setFormAdmissionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [formCardValidUntil, setFormCardValidUntil] = useState('2027-06-30');
+  const [formPhoto, setFormPhoto] = useState<string | undefined>(undefined);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Filter lists
   const filteredStudents = students.filter(s => {
@@ -83,7 +105,6 @@ export default function StudentsView({
 
   // Helper: Open add student modal
   const handleOpenAddModal = () => {
-    // Generate an automatic student ID based on existing length
     const nextNum = students.length + 1;
     const paddedNum = String(nextNum).padStart(3, '0');
     setFormStudentId(`ST-2026-${paddedNum}`);
@@ -93,6 +114,13 @@ export default function StudentsView({
     setFormSection(classes[0]?.section || 'A');
     setFormContact('');
     setFormEmail('');
+    setFormFatherName('');
+    setFormMotherName('');
+    setFormBloodGroup('O+');
+    setFormDob('2010-01-01');
+    setFormAdmissionDate(new Date().toISOString().split('T')[0]);
+    setFormCardValidUntil('2027-06-30');
+    setFormPhoto(undefined);
     setIsAddModalOpen(true);
   };
 
@@ -106,6 +134,13 @@ export default function StudentsView({
     setFormSection(student.section);
     setFormContact(student.contactNumber);
     setFormEmail(student.email || '');
+    setFormFatherName(student.fatherName || '');
+    setFormMotherName(student.motherName || '');
+    setFormBloodGroup(student.bloodGroup || 'O+');
+    setFormDob(student.dateOfBirth || '2010-01-01');
+    setFormAdmissionDate(student.admissionDate || new Date().toISOString().split('T')[0]);
+    setFormCardValidUntil(student.cardValidUntil || '2027-06-30');
+    setFormPhoto(student.photo);
     setIsEditModalOpen(true);
   };
 
@@ -113,6 +148,17 @@ export default function StudentsView({
   const handleOpenCardModal = (student: Student) => {
     setSelectedStudent(student);
     setIsCardModalOpen(true);
+  };
+
+  // Photo change handler
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setFormPhoto(ev.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Form submission: Add student
@@ -127,7 +173,16 @@ export default function StudentsView({
       classId: formClassId,
       section: formSection,
       contactNumber: formContact,
-      email: formEmail || undefined
+      email: formEmail || undefined,
+      fatherName: formFatherName || undefined,
+      motherName: formMotherName || undefined,
+      bloodGroup: formBloodGroup,
+      dateOfBirth: formDob,
+      admissionDate: formAdmissionDate,
+      cardValidUntil: formCardValidUntil,
+      photo: formPhoto,
+      qrToken: generateStudentQRToken(),
+      cardIssuedAt: new Date().toISOString().split('T')[0],
     });
 
     setIsAddModalOpen(false);
@@ -139,14 +194,21 @@ export default function StudentsView({
     if (!selectedStudent || !formName || !formRoll || !formClassId || !formSection || !formContact) return;
 
     await onUpdateStudent({
-      id: selectedStudent.id,
+      ...selectedStudent,
       studentId: formStudentId,
       name: formName,
       rollNumber: formRoll,
       classId: formClassId,
       section: formSection,
       contactNumber: formContact,
-      email: formEmail || undefined
+      email: formEmail || undefined,
+      fatherName: formFatherName || undefined,
+      motherName: formMotherName || undefined,
+      bloodGroup: formBloodGroup,
+      dateOfBirth: formDob,
+      admissionDate: formAdmissionDate,
+      cardValidUntil: formCardValidUntil,
+      photo: formPhoto,
     });
 
     setIsEditModalOpen(false);
@@ -162,34 +224,35 @@ export default function StudentsView({
     reader.onload = async (event) => {
       const text = event.target?.result as string;
       const parsed = parseCSV(text);
-      if (parsed.length <= 1) return; // Empty file or headers only
+      if (parsed.length <= 1) return;
 
       const headers = parsed[0].map(h => h.toLowerCase().trim());
       const studentsToImport: Omit<Student, 'id'>[] = [];
 
-      // Find indices based on headers
-      const nameIdx = headers.indexOf('name');
+      const nameIdx = headers.indexOf('name') !== -1 ? headers.indexOf('name') : headers.indexOf('fullname');
       const rollIdx = headers.indexOf('roll') !== -1 ? headers.indexOf('roll') : headers.indexOf('rollnumber');
-      const classIdx = headers.indexOf('class'); // expecting a class ID or name
+      const classIdx = headers.indexOf('class');
       const secIdx = headers.indexOf('section');
       const contactIdx = headers.indexOf('contact') !== -1 ? headers.indexOf('contact') : headers.indexOf('contactnumber');
       const emailIdx = headers.indexOf('email');
+      const fatherIdx = headers.indexOf('father') !== -1 ? headers.indexOf('father') : headers.indexOf('fathername');
+      const bloodIdx = headers.indexOf('blood') !== -1 ? headers.indexOf('blood') : headers.indexOf('bloodgroup');
 
       for (let i = 1; i < parsed.length; i++) {
         const row = parsed[i];
-        if (row.length < 2) continue; // Skip incomplete lines
+        if (row.length < 2) continue;
 
         const name = row[nameIdx] || '';
         const roll = row[rollIdx] || `${i}`;
-        let classId = row[classIdx] || '';
+        const classIdOrName = row[classIdx] || '';
         const section = row[secIdx] || 'A';
         const contact = row[contactIdx] || '+1 555-0000';
         const email = emailIdx !== -1 ? row[emailIdx] : '';
+        const fatherName = fatherIdx !== -1 ? row[fatherIdx] : undefined;
+        const bloodGroup = bloodIdx !== -1 ? row[bloodIdx] : 'O+';
 
-        // Match class name to classId if applicable
-        const matchedClass = classes.find(c => c.name.toLowerCase() === classId.toLowerCase() || c.id === classId);
+        const matchedClass = classes.find(c => c.name.toLowerCase() === classIdOrName.toLowerCase() || c.id === classIdOrName);
         const resolvedClassId = matchedClass ? matchedClass.id : (classes[0]?.id || 'c1');
-
         const studentId = `ST-2026-${String(students.length + studentsToImport.length + 1).padStart(3, '0')}`;
 
         if (name) {
@@ -200,7 +263,12 @@ export default function StudentsView({
             classId: resolvedClassId,
             section,
             contactNumber: contact,
-            email: email || undefined
+            email: email || undefined,
+            fatherName,
+            bloodGroup,
+            qrToken: generateStudentQRToken(),
+            cardValidUntil: '2027-06-30',
+            cardIssuedAt: new Date().toISOString().split('T')[0],
           });
         }
       }
@@ -210,13 +278,12 @@ export default function StudentsView({
       }
     };
     reader.readAsText(file);
-    // Reset file input value
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // CSV Export Trigger
   const handleCSVExport = () => {
-    const headers = ['Student ID', 'Full Name', 'Roll Number', 'Class Name', 'Section', 'Contact Number', 'Email'];
+    const headers = ['Student ID', 'Full Name', 'Roll Number', 'Class Name', 'Section', 'Contact Number', 'Email', 'Blood Group', 'Father Name'];
     const rows = filteredStudents.map(s => {
       const cls = classes.find(c => c.id === s.classId);
       return [
@@ -226,156 +293,38 @@ export default function StudentsView({
         cls ? cls.name : 'Unknown',
         s.section,
         s.contactNumber,
-        s.email || ''
+        s.email || '',
+        s.bloodGroup || 'O+',
+        s.fatherName || '',
       ];
     });
     exportToCSV(headers, rows, `SAMS_Student_Directory_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
-  // Trigger browser print for Badge Modal
-  const handlePrintBadge = () => {
-    const printContent = document.getElementById('student-id-card-print-area');
-    if (!printContent) return;
+  // Single card print trigger
+  const handlePrintCard = () => {
+    window.print();
+  };
 
-    const windowUrl = 'about:blank';
-    const uniqueName = new Date().getTime();
-    const windowName = 'Print' + uniqueName;
-    const printWindow = window.open(windowUrl, windowName, 'left=100,top=100,width=600,height=800');
+  // Batch students for batch modal
+  const batchStudents = batchClassFilter === 'all'
+    ? students
+    : students.filter(s => s.classId === batchClassFilter);
 
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Student ID Badge - ${selectedStudent?.name}</title>
-          <style>
-            body {
-              font-family: 'Helvetica Neue', Arial, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-              background-color: #f1f5f9;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .card {
-              background: #ffffff;
-              width: 320px;
-              height: 500px;
-              border-radius: 16px;
-              box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-              border: 1px solid #e2e8f0;
-              overflow: hidden;
-              display: flex;
-              flex-direction: column;
-              text-align: center;
-              position: relative;
-            }
-            .card-header {
-              background-color: #4f46e5;
-              color: white;
-              padding: 24px 16px;
-            }
-            .school-logo {
-              font-size: 24px;
-              margin-bottom: 4px;
-            }
-            .school-name {
-              font-size: 14px;
-              font-weight: bold;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .card-body {
-              padding: 24px;
-              flex: 1;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-            }
-            .avatar {
-              width: 90px;
-              height: 90px;
-              border-radius: 50%;
-              background: linear-gradient(135deg, #6366f1, #a855f7);
-              color: white;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 32px;
-              font-weight: bold;
-              margin-top: -50px;
-              border: 4px stroke white;
-              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            .name {
-              font-size: 18px;
-              font-weight: bold;
-              color: #1e293b;
-              margin: 12px 0 4px 0;
-            }
-            .title {
-              font-size: 12px;
-              color: #64748b;
-              font-weight: 500;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              margin-bottom: 16px;
-            }
-            .info-grid {
-              width: 100%;
-              display: grid;
-              grid-template-cols: 1fr 1fr;
-              gap: 8px;
-              margin-bottom: 24px;
-              font-size: 11px;
-              text-align: left;
-            }
-            .info-label {
-              color: #64748b;
-              font-weight: bold;
-            }
-            .info-value {
-              color: #1e293b;
-              font-weight: 600;
-            }
-            .barcode-container {
-              width: 140px;
-              height: 45px;
-              margin-bottom: 12px;
-            }
-            .qr-container {
-              width: 80px;
-              height: 80px;
-              position: absolute;
-              bottom: 15px;
-              right: 15px;
-            }
-            @media print {
-              body {
-                background: none;
-              }
-              .card {
-                box-shadow: none;
-                border: 1px solid #cbd5e1;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-          <script>
-            window.onload = function() {
-              window.print();
-              window.close();
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+  // Batch 8-Up A4 PDF Export trigger
+  const handleExportBatchPDF = async () => {
+    if (batchStudents.length === 0) return;
+    setIsExportingBatch(true);
+    try {
+      await downloadBatchCardsPDF(batchStudents, classes, settings, (current, total) => {
+        setBatchProgress({ current, total });
+      });
+    } catch (err) {
+      console.error('Failed to export batch cards PDF:', err);
+    } finally {
+      setIsExportingBatch(false);
+      setBatchProgress(null);
+    }
   };
 
   return (
@@ -384,10 +333,10 @@ export default function StudentsView({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
-            Students Directory
+            Students Directory & ID Center
           </h2>
           <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Maintain digital student records, print individual identification badges, and batch export database rosters.
+            Maintain digital student records, generate CR80 smart identity passes with secure QR tokens, and batch print badges.
           </p>
         </div>
 
@@ -413,9 +362,19 @@ export default function StudentsView({
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
             >
-              Badge Grid
+              Pass Cards
             </button>
           </div>
+
+          {/* Batch Print ID Passes */}
+          <button
+            onClick={() => setIsBatchCardsModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold transition-all"
+            title="Batch print student ID passes for an entire class"
+          >
+            <Layers size={13} />
+            <span>Batch Print Passes</span>
+          </button>
 
           {/* Import/Export buttons */}
           <button
@@ -444,7 +403,7 @@ export default function StudentsView({
           {/* Add Student button */}
           <button
             onClick={handleOpenAddModal}
-            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow transition-all"
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all"
           >
             <Plus size={13} />
             <span>Register Student</span>
@@ -453,7 +412,7 @@ export default function StudentsView({
       </div>
 
       {/* Roster Filters Grid */}
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-slate-200/40 dark:border-slate-800/40 p-3 rounded-xl shadow-sm flex flex-col md:flex-row gap-2.5">
+      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-slate-200/40 dark:border-slate-800/40 p-3 rounded-xl shadow-xs flex flex-col md:flex-row gap-2.5">
         {/* Search Input */}
         <div className="flex-1 relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
@@ -461,7 +420,7 @@ export default function StudentsView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search student by name, ID, or roll number..."
+            placeholder="Search student by name, student ID, or roll number..."
             className="w-full pl-8.5 pr-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 transition-all font-sans"
           />
         </div>
@@ -507,7 +466,7 @@ export default function StudentsView({
         </div>
       ) : viewMode === 'table' ? (
         /* Table View */
-        <div className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-xl shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -516,6 +475,7 @@ export default function StudentsView({
                   <th className="px-4 py-2.5">Full Name</th>
                   <th className="px-4 py-2.5">Roll</th>
                   <th className="px-4 py-2.5">Class</th>
+                  <th className="px-4 py-2.5">Blood</th>
                   <th className="px-4 py-2.5">Contact Phone</th>
                   <th className="px-4 py-2.5 text-right">Actions</th>
                 </tr>
@@ -534,9 +494,17 @@ export default function StudentsView({
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
-                            {firstLetter}
-                          </div>
+                          {student.photo ? (
+                            <img
+                              src={student.photo}
+                              alt={student.name}
+                              className="w-7 h-7 rounded-full object-cover border border-indigo-200"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+                              {firstLetter}
+                            </div>
+                          )}
                           <div>
                             <p className="font-semibold text-slate-800 dark:text-slate-200">{student.name}</p>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500">{student.email || 'No email registered'}</p>
@@ -544,10 +512,13 @@ export default function StudentsView({
                         </div>
                       </td>
                       <td className="px-4 py-2.5 font-mono font-medium">
-                        {student.rollNumber}
+                        #{student.rollNumber}
                       </td>
                       <td className="px-4 py-2.5 font-medium">
                         {studentClass ? `${studentClass.name} - ${studentClass.section}` : `Sect. ${student.section}`}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-rose-500 font-bold">
+                        {student.bloodGroup || 'O+'}
                       </td>
                       <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
                         {student.contactNumber}
@@ -555,21 +526,22 @@ export default function StudentsView({
                       <td className="px-4 py-2.5 text-right space-x-1 whitespace-nowrap">
                         <button
                           onClick={() => handleOpenCardModal(student)}
-                          className="p-1 rounded bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 transition-colors"
-                          title="View Digital Badge"
+                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold transition-colors inline-flex items-center gap-1"
+                          title="Generate & View ID Card"
                         >
                           <QrCode size={12} />
+                          <span>ID Card</span>
                         </button>
                         <button
                           onClick={() => handleOpenEditModal(student)}
-                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors"
+                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors inline-block"
                           title="Edit Info"
                         >
                           <Edit size={12} />
                         </button>
                         <button
                           onClick={() => onDeleteStudent(student.id)}
-                          className="p-1 rounded bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 transition-colors"
+                          className="p-1 rounded bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 transition-colors inline-block"
                           title="Delete Record"
                         >
                           <Trash2 size={12} />
@@ -590,12 +562,20 @@ export default function StudentsView({
             return (
               <div 
                 key={student.id}
-                className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-3.5 rounded-xl shadow-sm hover:shadow transition-all flex flex-col items-center text-center group"
+                className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-3.5 rounded-xl shadow-xs hover:shadow transition-all flex flex-col items-center text-center group"
               >
-                {/* Visual Header Grid Avatar */}
-                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-sm shadow">
-                  {student.name.charAt(0)}
-                </div>
+                {/* Visual Avatar */}
+                {student.photo ? (
+                  <img
+                    src={student.photo}
+                    alt={student.name}
+                    className="w-13 h-13 rounded-full object-cover border-2 border-indigo-400/60 shadow"
+                  />
+                ) : (
+                  <div className="w-13 h-13 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-base shadow">
+                    {student.name.charAt(0)}
+                  </div>
+                )}
                 
                 <h3 className="font-sans font-bold text-xs text-slate-800 dark:text-slate-100 mt-2.5 truncate max-w-full">
                   {student.name}
@@ -619,9 +599,15 @@ export default function StudentsView({
                       #{student.rollNumber}
                     </span>
                   </div>
-                  <div className="col-span-2">
+                  <div>
+                    <span className="block text-[8px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Blood</span>
+                    <span className="font-mono font-bold text-rose-500 block text-[11px]">
+                      {student.bloodGroup || 'O+'}
+                    </span>
+                  </div>
+                  <div>
                     <span className="block text-[8px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Contact</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300 block truncate text-[10px]">
+                    <span className="font-mono text-slate-700 dark:text-slate-300 block truncate text-[10px]">
                       {student.contactNumber}
                     </span>
                   </div>
@@ -632,13 +618,13 @@ export default function StudentsView({
                 <div className="flex justify-center gap-1.5 w-full">
                   <button
                     onClick={() => handleOpenCardModal(student)}
-                    className="flex-1 flex items-center justify-center gap-1 py-1 rounded bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-all"
+                    className="flex-1 flex items-center justify-center gap-1 py-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold transition-all"
                   >
-                    <QrCode size={11} /> Badge
+                    <QrCode size={11} /> Pass
                   </button>
                   <button
                     onClick={() => handleOpenEditModal(student)}
-                    className="px-2 py-1 rounded bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-all"
+                    className="px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-all"
                   >
                     <Edit size={11} />
                   </button>
@@ -664,17 +650,17 @@ export default function StudentsView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsAddModalOpen(false)}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs"
             />
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl w-full max-w-lg p-4.5 relative z-10 shadow-xl overflow-y-auto max-h-[95vh]"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl w-full max-w-xl p-5 relative z-10 shadow-xl overflow-y-auto max-h-[92vh]"
             >
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="absolute right-3 top-3 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
+                className="absolute right-3.5 top-3.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
               >
                 <X size={15} />
               </button>
@@ -685,20 +671,66 @@ export default function StudentsView({
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Register New Student</h3>
-                  <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500">Add a new pupil to the digital attendance grid</p>
+                  <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500">
+                    Add pupil record with photo and auto-generated secure QR attendance token
+                  </p>
                 </div>
               </div>
 
-              <form onSubmit={handleAddSubmit} className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
+              <form onSubmit={handleAddSubmit} className="space-y-3.5">
+                {/* Photo Upload preview row */}
+                <div className="flex items-center gap-3 p-3 bg-slate-50/70 dark:bg-slate-950/50 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
+                  {formPhoto ? (
+                    <img
+                      src={formPhoto}
+                      alt="Student Preview"
+                      className="w-14 h-14 object-cover rounded-lg border-2 border-indigo-400/60 shadow-xs"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                      <Camera size={20} />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">Student Photo</span>
+                    <span className="text-[10px] text-slate-400 block">Recommended square or portrait photo for CR80 card</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+                      >
+                        Choose Photo
+                      </button>
+                      {formPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setFormPhoto(undefined)}
+                          className="text-[10px] text-rose-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <input
+                        type="file"
+                        ref={photoInputRef}
+                        accept="image/*"
+                        onChange={handlePhotoFileChange}
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
                     <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Full Name *</label>
                     <input
                       type="text"
                       required
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
-                      placeholder="e.g. John Doe"
+                      placeholder="e.g. Johnathan Miller"
                       className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
                     />
                   </div>
@@ -710,8 +742,7 @@ export default function StudentsView({
                       required
                       value={formStudentId}
                       onChange={(e) => setFormStudentId(e.target.value)}
-                      placeholder="ST-2026-XYZ"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
@@ -723,7 +754,7 @@ export default function StudentsView({
                       value={formRoll}
                       onChange={(e) => setFormRoll(e.target.value)}
                       placeholder="e.g. 05"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
@@ -748,11 +779,56 @@ export default function StudentsView({
                       value={formSection}
                       onChange={(e) => setFormSection(e.target.value)}
                       placeholder="e.g. A"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Blood Group</label>
+                    <select
+                      value={formBloodGroup}
+                      onChange={(e) => setFormBloodGroup(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    >
+                      {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                        <option key={bg} value={bg}>{bg}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Card Valid Until</label>
+                    <input
+                      type="date"
+                      value={formCardValidUntil}
+                      onChange={(e) => setFormCardValidUntil(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Father / Guardian Name</label>
+                    <input
+                      type="text"
+                      value={formFatherName}
+                      onChange={(e) => setFormFatherName(e.target.value)}
+                      placeholder="e.g. Robert Miller"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Mother Name</label>
+                    <input
+                      type="text"
+                      value={formMotherName}
+                      onChange={(e) => setFormMotherName(e.target.value)}
+                      placeholder="e.g. Sarah Miller"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Contact Number *</label>
                     <input
                       type="text"
@@ -764,13 +840,13 @@ export default function StudentsView({
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Email Address (Optional)</label>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Email Address</label>
                     <input
                       type="email"
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="e.g. john.doe@school.edu"
+                      placeholder="e.g. john@school.edu"
                       className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
                     />
                   </div>
@@ -786,9 +862,9 @@ export default function StudentsView({
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs shadow shadow-indigo-600/15"
+                    className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs shadow-xs"
                   >
-                    Register Student
+                    Register Student & Issue Pass
                   </button>
                 </div>
               </form>
@@ -806,17 +882,17 @@ export default function StudentsView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => { setIsEditModalOpen(false); setSelectedStudent(null); }}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs"
             />
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl w-full max-w-lg p-4.5 relative z-10 shadow-xl overflow-y-auto max-h-[95vh]"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl w-full max-w-xl p-5 relative z-10 shadow-xl overflow-y-auto max-h-[92vh]"
             >
               <button 
                 onClick={() => { setIsEditModalOpen(false); setSelectedStudent(null); }}
-                className="absolute right-3 top-3 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
+                className="absolute right-3.5 top-3.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
               >
                 <X size={15} />
               </button>
@@ -826,21 +902,64 @@ export default function StudentsView({
                   <Edit size={15} />
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Edit Student Record</h3>
-                  <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500">Update file logs for {selectedStudent?.name}</p>
+                  <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Edit Student Profile</h3>
+                  <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500">Update identity records for {selectedStudent?.name}</p>
                 </div>
               </div>
 
-              <form onSubmit={handleEditSubmit} className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
+              <form onSubmit={handleEditSubmit} className="space-y-3.5">
+                {/* Photo Upload preview row */}
+                <div className="flex items-center gap-3 p-3 bg-slate-50/70 dark:bg-slate-950/50 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
+                  {formPhoto ? (
+                    <img
+                      src={formPhoto}
+                      alt="Student Preview"
+                      className="w-14 h-14 object-cover rounded-lg border-2 border-indigo-400/60 shadow-xs"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                      <Camera size={20} />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">Student Photo</span>
+                    <span className="text-[10px] text-slate-400 block">Update card portrait photo</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+                      >
+                        Change Photo
+                      </button>
+                      {formPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setFormPhoto(undefined)}
+                          className="text-[10px] text-rose-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <input
+                        type="file"
+                        ref={photoInputRef}
+                        accept="image/*"
+                        onChange={handlePhotoFileChange}
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
                     <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Full Name *</label>
                     <input
                       type="text"
                       required
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
-                      placeholder="e.g. John Doe"
                       className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
                     />
                   </div>
@@ -852,8 +971,7 @@ export default function StudentsView({
                       required
                       value={formStudentId}
                       onChange={(e) => setFormStudentId(e.target.value)}
-                      placeholder="ST-2026-XYZ"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
@@ -864,8 +982,7 @@ export default function StudentsView({
                       required
                       value={formRoll}
                       onChange={(e) => setFormRoll(e.target.value)}
-                      placeholder="e.g. 05"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
@@ -889,30 +1006,50 @@ export default function StudentsView({
                       required
                       value={formSection}
                       onChange={(e) => setFormSection(e.target.value)}
-                      placeholder="e.g. A"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans font-mono"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-mono"
                     />
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Blood Group</label>
+                    <select
+                      value={formBloodGroup}
+                      onChange={(e) => setFormBloodGroup(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    >
+                      {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                        <option key={bg} value={bg}>{bg}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Card Valid Until</label>
+                    <input
+                      type="date"
+                      value={formCardValidUntil}
+                      onChange={(e) => setFormCardValidUntil(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Father / Guardian Name</label>
+                    <input
+                      type="text"
+                      value={formFatherName}
+                      onChange={(e) => setFormFatherName(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Contact Number *</label>
                     <input
                       type="text"
                       required
                       value={formContact}
                       onChange={(e) => setFormContact(e.target.value)}
-                      placeholder="e.g. +1 555-0100"
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Email Address (Optional)</label>
-                    <input
-                      type="email"
-                      value={formEmail}
-                      onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="e.g. john.doe@school.edu"
                       className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
                     />
                   </div>
@@ -928,7 +1065,7 @@ export default function StudentsView({
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs shadow shadow-indigo-600/15"
+                    className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs shadow-xs"
                   >
                     Save Changes
                   </button>
@@ -939,7 +1076,7 @@ export default function StudentsView({
         )}
       </AnimatePresence>
 
-      {/* MODAL: DIGITAL ID BADGE CARD */}
+      {/* MODAL: SINGLE STUDENT CR80 ID CARD */}
       <AnimatePresence>
         {isCardModalOpen && selectedStudent && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
@@ -948,112 +1085,160 @@ export default function StudentsView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => { setIsCardModalOpen(false); setSelectedStudent(null); }}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs"
             />
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl w-full max-w-sm p-4 relative z-10 shadow-xl flex flex-col items-center"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl w-full max-w-lg p-5 relative z-10 shadow-2xl flex flex-col items-center"
             >
               <button 
                 onClick={() => { setIsCardModalOpen(false); setSelectedStudent(null); }}
-                className="absolute right-3 top-3 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
+                className="absolute right-3.5 top-3.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
               >
-                <X size={15} />
+                <X size={16} />
               </button>
 
               <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm mb-3 flex items-center gap-2">
-                <CreditCard size={15} className="text-indigo-500" /> Digital ID Badge
+                <CreditCard size={15} className="text-indigo-500" />
+                <span>Student Smart Pass & QR Identity Badge</span>
               </h3>
 
-              {/* ID Badge Container (Target of Window Printing) */}
-              <div 
-                id="student-id-card-print-area" 
-                className="w-full flex justify-center mb-4"
-              >
-                <div className="card w-[290px] h-[450px] bg-white text-slate-800 rounded-2xl border border-slate-200 shadow-lg overflow-hidden flex flex-col text-center relative font-sans">
-                  {/* Card Header Background banner */}
-                  <div className="bg-indigo-600 text-white py-5 px-4">
-                    <span className="text-xl block mb-0.5">🎓</span>
-                    <span className="font-bold text-xs uppercase tracking-wider block">SAMS ACADEMY</span>
-                    <span className="text-[9px] text-indigo-200 uppercase tracking-widest font-semibold font-mono">Student ID Card</span>
-                  </div>
+              {/* Render CR80 Standard Card */}
+              <StudentCard
+                student={selectedStudent}
+                settings={settings}
+                studentClass={classes.find(c => c.id === selectedStudent.classId)}
+                onReissueToken={async (id) => {
+                  const updated = await onReissueToken(id);
+                  if (updated) {
+                    setSelectedStudent(updated);
+                  } else {
+                    const fresh = students.find(s => s.id === id);
+                    if (fresh) setSelectedStudent(fresh);
+                  }
+                }}
+              />
 
-                  {/* Card Body content */}
-                  <div className="p-5 flex-1 flex flex-col items-center justify-between">
-                    {/* Floating Avatar */}
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-2xl -mt-14 border-4 border-white shadow-md">
-                      {selectedStudent.name.charAt(0)}
-                    </div>
-
-                    <div>
-                      <h4 className="text-base font-bold text-slate-800 mt-2">{selectedStudent.name}</h4>
-                      <p className="text-[10px] font-bold text-indigo-600 tracking-wider uppercase font-mono">{selectedStudent.studentId}</p>
-                    </div>
-
-                    {/* Metadata Grid */}
-                    <div className="w-full grid grid-cols-2 gap-y-1.5 gap-x-2 text-left text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-2">
-                      <div>
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Class</span>
-                        <span className="font-bold text-slate-700 truncate block">
-                          {classes.find(c => c.id === selectedStudent.classId)?.name || 'N/A'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Section</span>
-                        <span className="font-bold text-slate-700 block">
-                          {selectedStudent.section}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Roll No.</span>
-                        <span className="font-bold text-slate-700 block font-mono">
-                          #{selectedStudent.rollNumber}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Contact</span>
-                        <span className="font-bold text-slate-700 block truncate font-mono">
-                          {selectedStudent.contactNumber}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Barcode vector asset */}
-                    <div className="w-[180px] h-[44px] flex items-center justify-center text-slate-800 mt-3 overflow-hidden">
-                      <div 
-                        dangerouslySetInnerHTML={{ __html: generateBarcodeSVG(selectedStudent.studentId) }} 
-                        className="w-full h-full"
-                      />
-                    </div>
-
-                    {/* QR Code vector overlayed floating at the bottom right inside print badge, or kept separately */}
-                    <div className="absolute bottom-3 right-3 w-12 h-12 border border-slate-200 rounded-lg p-0.5 bg-white shadow-sm overflow-hidden">
-                      <div 
-                        dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(selectedStudent.studentId) }} 
-                        className="w-full h-full text-slate-800"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Badges Action */}
-              <div className="flex gap-2 w-full mt-1">
+              <div className="w-full mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => { setIsCardModalOpen(false); setSelectedStudent(null); }}
-                  className="flex-1 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 font-sans font-semibold text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                  className="px-4 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Close
                 </button>
-                <button
-                  onClick={handlePrintBadge}
-                  className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow"
-                >
-                  <Printer size={12} />
-                  <span>Print Badge</span>
-                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: BATCH CARDS PRINT GENERATOR */}
+      <AnimatePresence>
+        {isBatchCardsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsBatchCardsModalOpen(false)}
+              className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl w-full max-w-4xl p-5 relative z-10 shadow-2xl flex flex-col max-h-[94vh]"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200/50 dark:border-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500">
+                    <Layers size={16} />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                      Batch Student Passes Generator
+                    </h3>
+                    <p className="text-[10px] text-slate-400">
+                      Standard CR80 dimensions, printable 8-up grid ready for plastic card or paper badge cutting
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Class Filter */}
+                  <select
+                    value={batchClassFilter}
+                    onChange={(e) => setBatchClassFilter(e.target.value)}
+                    className="pl-2 pr-6 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="all">All Classes ({students.length})</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} - {c.section} ({students.filter(s => s.classId === c.id).length})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* 8-Up A4 PDF Export */}
+                  <button
+                    onClick={handleExportBatchPDF}
+                    disabled={isExportingBatch || batchStudents.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs disabled:opacity-50 transition-all"
+                    title="Export 8-Up A4 PDF sheet for batch printing"
+                  >
+                    {isExportingBatch ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        <span>
+                          {batchProgress
+                            ? `Generating (${batchProgress.current}/${batchProgress.total})...`
+                            : 'Rendering PDF...'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={12} />
+                        <span>Export 8-Up A4 PDF</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Direct Sheet Print */}
+                  <button
+                    onClick={() => window.print()}
+                    disabled={isExportingBatch || batchStudents.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-all"
+                  >
+                    <Printer size={12} />
+                    <span>Print Sheet</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setIsBatchCardsModalOpen(false)}
+                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid of Student Cards for preview & print */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div id="printable-batch-area" className="grid grid-cols-1 md:grid-cols-2 gap-4 place-items-center">
+                  {batchStudents.map(student => (
+                    <div key={student.id} className="scale-[0.92] origin-top">
+                      <StudentCard
+                        student={student}
+                        settings={settings}
+                        studentClass={classes.find(c => c.id === student.classId)}
+                        interactive={false}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           </div>
