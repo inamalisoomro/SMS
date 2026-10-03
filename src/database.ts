@@ -7,7 +7,7 @@ import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog
 import { generateStudentQRToken } from './utils';
 
 const DB_NAME = 'SAMS_DB';
-const DB_VERSION = 2; // Incremented for new settings store
+const DB_VERSION = 3; // Incremented for notifications and homework/announcements stores
 
 export class SAMSIndexedDB {
   private db: IDBDatabase | null = null;
@@ -52,6 +52,18 @@ export class SAMSIndexedDB {
         }
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('notifications')) {
+          db.createObjectStore('notifications', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('homework')) {
+          db.createObjectStore('homework', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('announcements')) {
+          db.createObjectStore('announcements', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('results')) {
+          db.createObjectStore('results', { keyPath: 'id' });
         }
       };
     });
@@ -296,6 +308,127 @@ export class SAMSIndexedDB {
     });
   }
 
+  // --- CRUD for Email Notifications ---
+  async getNotifications(): Promise<any[]> {
+    const store = await this.getStore('notifications');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: any, b: any) => b.createdAt - a.createdAt);
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveNotification(notification: any): Promise<void> {
+    const store = await this.getStore('notifications', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(notification);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    const store = await this.getStore('notifications', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Homework ---
+  async getHomework(): Promise<any[]> {
+    const store = await this.getStore('homework');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveHomework(homework: any): Promise<void> {
+    const store = await this.getStore('homework', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(homework);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteHomework(id: string): Promise<void> {
+    const store = await this.getStore('homework', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Announcements ---
+  async getAnnouncements(): Promise<any[]> {
+    const store = await this.getStore('announcements');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: any, b: any) => b.createdAt - a.createdAt);
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveAnnouncement(announcement: any): Promise<void> {
+    const store = await this.getStore('announcements', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(announcement);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+    const store = await this.getStore('announcements', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Results ---
+  async getResults(): Promise<any[]> {
+    const store = await this.getStore('results');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: any, b: any) => b.publishedAt - a.publishedAt);
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveResult(result: any): Promise<void> {
+    const store = await this.getStore('results', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(result);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteResult(id: string): Promise<void> {
+    const store = await this.getStore('results', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // Seed default data if database is empty
   async seedIfEmpty(): Promise<boolean> {
     const students = await this.getStudents();
@@ -529,7 +662,7 @@ export class SAMSIndexedDB {
   // Clear all database tables
   async resetDatabase(): Promise<void> {
     const db = await this.init();
-    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings'];
+    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results'];
     const transaction = db.transaction(stores, 'readwrite');
     
     stores.forEach((storeName) => {

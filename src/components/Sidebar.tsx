@@ -18,6 +18,7 @@ import {
   Menu, 
   X,
   Bell,
+  Megaphone,
   Activity
 } from 'lucide-react';
 import { AppSettings } from '../types';
@@ -49,6 +50,7 @@ export default function Sidebar({
     { id: 'students', label: 'Students Directory', icon: Users },
     { id: 'classes', label: 'Classes & Sections', icon: GraduationCap },
     { id: 'subjects', label: 'Subjects List', icon: BookOpen },
+    { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'reports', label: 'Reports Hub', icon: FileBarChart2 },
     { id: 'analytics', label: 'Visual Analytics', icon: BarChart3 },
     { id: 'settings', label: 'System Settings', icon: Settings },

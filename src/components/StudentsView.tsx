@@ -75,6 +75,8 @@ export default function StudentsView({
   const [formContact, setFormContact] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formStudentId, setFormStudentId] = useState('');
+  const [formParentEmail, setFormParentEmail] = useState('');
+  const [formSecondaryParentEmail, setFormSecondaryParentEmail] = useState('');
   const [formFatherName, setFormFatherName] = useState('');
   const [formMotherName, setFormMotherName] = useState('');
   const [formBloodGroup, setFormBloodGroup] = useState('O+');
@@ -114,6 +116,8 @@ export default function StudentsView({
     setFormSection(classes[0]?.section || 'A');
     setFormContact('');
     setFormEmail('');
+    setFormParentEmail('');
+    setFormSecondaryParentEmail('');
     setFormFatherName('');
     setFormMotherName('');
     setFormBloodGroup('O+');
@@ -134,6 +138,8 @@ export default function StudentsView({
     setFormSection(student.section);
     setFormContact(student.contactNumber);
     setFormEmail(student.email || '');
+    setFormParentEmail(student.parentEmail || '');
+    setFormSecondaryParentEmail(student.secondaryParentEmail || '');
     setFormFatherName(student.fatherName || '');
     setFormMotherName(student.motherName || '');
     setFormBloodGroup(student.bloodGroup || 'O+');
@@ -174,6 +180,8 @@ export default function StudentsView({
       section: formSection,
       contactNumber: formContact,
       email: formEmail || undefined,
+      parentEmail: formParentEmail || undefined,
+      secondaryParentEmail: formSecondaryParentEmail || undefined,
       fatherName: formFatherName || undefined,
       motherName: formMotherName || undefined,
       bloodGroup: formBloodGroup,
@@ -202,6 +210,8 @@ export default function StudentsView({
       section: formSection,
       contactNumber: formContact,
       email: formEmail || undefined,
+      parentEmail: formParentEmail || undefined,
+      secondaryParentEmail: formSecondaryParentEmail || undefined,
       fatherName: formFatherName || undefined,
       motherName: formMotherName || undefined,
       bloodGroup: formBloodGroup,
@@ -849,6 +859,37 @@ export default function StudentsView({
                       placeholder="e.g. john@school.edu"
                       className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
                     />
+                  </div>
+
+                  {/* Parent Email Fields for Notifications */}
+                  <div className="col-span-2 border-t border-slate-200 dark:border-slate-800 pt-3 mt-2">
+                    <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                      📧 Parent Email (For Notifications)
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Primary Parent Email</label>
+                        <input
+                          type="email"
+                          value={formParentEmail}
+                          onChange={(e) => setFormParentEmail(e.target.value)}
+                          placeholder="father@example.com"
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                        />
+                        <p className="text-[9px] text-slate-400 mt-0.5">Homework, results, certificates</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">Secondary Parent Email</label>
+                        <input
+                          type="email"
+                          value={formSecondaryParentEmail}
+                          onChange={(e) => setFormSecondaryParentEmail(e.target.value)}
+                          placeholder="mother@example.com (optional)"
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                        />
+                        <p className="text-[9px] text-slate-400 mt-0.5">Optional second parent</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

@@ -17,7 +17,9 @@ import {
   Sun,
   Moon,
   Image as ImageIcon,
-  X
+  X,
+  Mail,
+  Copy
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { validateImageFile, resizeAndEncodeImage } from '../utils';
@@ -44,6 +46,12 @@ export default function SettingsView({
   const [schoolAddress, setSchoolAddress] = useState(settings.schoolAddress || '100 Campus Parkway, Education District');
   const [schoolPhone, setSchoolPhone] = useState(settings.schoolPhone || '+1 (555) 019-2834');
   const [activeTheme, setActiveTheme] = useState(settings.theme);
+
+  // EmailJS Configuration
+  const [emailJsServiceId, setEmailJsServiceId] = useState(settings.emailJsServiceId || '');
+  const [emailJsTemplateId, setEmailJsTemplateId] = useState(settings.emailJsTemplateId || '');
+  const [emailJsPublicKey, setEmailJsPublicKey] = useState(settings.emailJsPublicKey || '');
+  const [emailConfigSaved, setEmailConfigSaved] = useState(false);
 
   // Form submit status
   const [isSaved, setIsSaved] = useState(false);
@@ -76,6 +84,47 @@ export default function SettingsView({
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  const handleEmailConfigSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate all three fields are present
+    const serviceId = emailJsServiceId.trim();
+    const templateId = emailJsTemplateId.trim();
+    const publicKey = emailJsPublicKey.trim();
+
+    if (!serviceId || !templateId || !publicKey) {
+      // Show error - use the parent's toast system via a custom event or callback
+      // For now, we'll just prevent submission
+      alert('Please fill in all EmailJS configuration fields (Service ID, Template ID, and Public Key)');
+      return;
+    }
+
+    await onSaveSettings({
+      emailJsServiceId: serviceId,
+      emailJsTemplateId: templateId,
+      emailJsPublicKey: publicKey
+    });
+
+    setEmailConfigSaved(true);
+    setTimeout(() => setEmailConfigSaved(false), 3000);
+  };
+
+  const handleCopyExampleConfig = async () => {
+    const exampleConfig = {
+      serviceId: "service_example123",
+      templateId: "template_example456",
+      publicKey: "public_key_example789"
+    };
+    
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(exampleConfig, null, 2));
+      // Show success feedback
+      alert('Example configuration copied to clipboard!');
+    } catch (err) {
+      alert('Failed to copy to clipboard');
+    }
   };
 
   const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,6 +388,95 @@ export default function SettingsView({
                 <span>{isSaved ? 'Settings Saved Successfully' : 'Apply Settings Changes'}</span>
               </button>
             </div>
+          </form>
+        </div>
+
+        {/* EMAIL CONFIGURATION FORM */}
+        <div className="md:col-span-12 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm">
+          <div className="flex items-center gap-1.5 pb-2.5 border-b border-slate-100 dark:border-slate-800/80 mb-3.5">
+            <div className="p-1 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Mail size={14} />
+            </div>
+            <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs">School Management System — Email Settings</h3>
+          </div>
+
+          {!emailJsServiceId && !emailJsTemplateId && !emailJsPublicKey && (
+            <div className="mb-3 p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30 rounded-lg">
+              <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                <strong>EmailJS is not configured.</strong> Enter your Service ID, Template ID, and Public Key to enable email notifications for parents.
+              </p>
+            </div>
+          )}
+
+          <form onSubmit={handleEmailConfigSubmit} className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Service ID */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">
+                  Service ID *
+                </label>
+                <input
+                  type="text"
+                  value={emailJsServiceId}
+                  onChange={(e) => setEmailJsServiceId(e.target.value)}
+                  placeholder="Enter your EmailJS Service ID"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 dark:text-slate-300 font-mono"
+                />
+              </div>
+
+              {/* Template ID */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">
+                  Template ID *
+                </label>
+                <input
+                  type="text"
+                  value={emailJsTemplateId}
+                  onChange={(e) => setEmailJsTemplateId(e.target.value)}
+                  placeholder="Enter your EmailJS Template ID"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 dark:text-slate-300 font-mono"
+                />
+              </div>
+
+              {/* Public Key */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase font-mono tracking-wider">
+                  Public Key *
+                </label>
+                <input
+                  type="text"
+                  value={emailJsPublicKey}
+                  onChange={(e) => setEmailJsPublicKey(e.target.value)}
+                  placeholder="Enter your EmailJS Public Key"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 dark:text-slate-300 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-sans font-bold text-xs shadow transition-all flex items-center justify-center gap-1"
+              >
+                {emailConfigSaved ? <Check size={12} /> : null}
+                <span>{emailConfigSaved ? 'Email Settings Saved' : 'Save Email Configuration'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyExampleConfig}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-sans font-semibold text-xs transition-all flex items-center gap-1.5"
+              >
+                <Copy size={12} />
+                <span>Copy example configuration</span>
+              </button>
+            </div>
+
+            {/* Info Text */}
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Sign up for free at <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 underline">emailjs.com</a> to get your credentials. Free tier includes 200 emails/month.
+            </p>
           </form>
         </div>
 

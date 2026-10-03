@@ -16,6 +16,7 @@ import AttendanceView from './components/AttendanceView';
 import ReportsView from './components/ReportsView';
 import AnalyticsView from './components/AnalyticsView';
 import SettingsView from './components/SettingsView';
+import AnnouncementsView from './components/AnnouncementsView';
 import { 
   Bell, 
   X, 
@@ -39,6 +40,7 @@ export default function App() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
 
   // Navigation and UI States
   const [currentTab, setCurrentTab] = useState('dashboard');
@@ -117,12 +119,14 @@ export default function App() {
       const sub = await dbInstance.getSubjects();
       const att = await dbInstance.getAttendance();
       const l = await dbInstance.getLogs();
+      const ann = await dbInstance.getAnnouncements();
 
       setStudents(s);
       setClasses(c);
       setSubjects(sub);
       setAttendance(att);
       setLogs(l);
+      setAnnouncements(ann);
     } catch (err) {
       console.error('Failed to load active collections:', err);
       triggerToast('error', 'Failed to retrieve active database logs.');
@@ -360,6 +364,30 @@ export default function App() {
     }
   };
 
+  // --- ADD ANNOUNCEMENT ---
+  const handleAddAnnouncement = async (announcement: any) => {
+    try {
+      const id = crypto.randomUUID();
+      await dbInstance.saveAnnouncement({ id, ...announcement });
+      await dbInstance.addLog('Announcement Posted', `Posted: ${announcement.title}`);
+      await loadAllData();
+    } catch (err) {
+      triggerToast('error', 'Failed to post announcement');
+    }
+  };
+
+  // --- DELETE ANNOUNCEMENT ---
+  const handleDeleteAnnouncement = async (id: string) => {
+    try {
+      await dbInstance.deleteAnnouncement(id);
+      await dbInstance.addLog('Announcement Deleted', 'Announcement removed');
+      await loadAllData();
+      triggerToast('success', 'Announcement deleted');
+    } catch (err) {
+      triggerToast('error', 'Failed to delete announcement');
+    }
+  };
+
   // --- CSV BATCH IMPORT ---
   const handleImportStudents = async (importedList: Omit<Student, 'id'>[]) => {
     try {
@@ -565,6 +593,18 @@ export default function App() {
             students={students}
             classes={classes}
             attendance={attendance}
+          />
+        );
+      case 'announcements':
+        return (
+          <AnnouncementsView
+            announcements={announcements}
+            students={students}
+            classes={classes}
+            settings={settings}
+            onAddAnnouncement={handleAddAnnouncement}
+            onDeleteAnnouncement={handleDeleteAnnouncement}
+            triggerToast={triggerToast}
           />
         );
       case 'settings':
