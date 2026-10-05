@@ -183,7 +183,12 @@ export async function sendAnnouncementNotification(
   recipients: Array<{ email: string; name: string; studentId?: string }>,
   settings: AppSettings
 ): Promise<{ sent: number; failed: number }> {
-  if (!emailService.isConfigured()) return { sent: 0, failed: 0 };
+  if (!emailService.isConfigured()) {
+    console.warn('Email service not configured. Configure EmailJS in Settings to send emails.');
+    return { sent: 0, failed: 0 };
+  }
+
+  console.log(`Sending announcement to ${recipients.length} recipients...`);
 
   let sent = 0, failed = 0;
 

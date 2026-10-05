@@ -191,6 +191,7 @@ export default function StudentsView({
       photo: formPhoto,
       qrToken: generateStudentQRToken(),
       cardIssuedAt: new Date().toISOString().split('T')[0],
+      registeredAt: Date.now(), // Set registration timestamp
     });
 
     setIsAddModalOpen(false);
@@ -219,6 +220,7 @@ export default function StudentsView({
       admissionDate: formAdmissionDate,
       cardValidUntil: formCardValidUntil,
       photo: formPhoto,
+      // Preserve original registeredAt - do not update on edit
     });
 
     setIsEditModalOpen(false);
@@ -279,6 +281,7 @@ export default function StudentsView({
             qrToken: generateStudentQRToken(),
             cardValidUntil: '2027-06-30',
             cardIssuedAt: new Date().toISOString().split('T')[0],
+            registeredAt: Date.now(), // Set registration timestamp for imported students
           });
         }
       }

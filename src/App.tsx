@@ -530,8 +530,10 @@ export default function App() {
           <DashboardView
             students={students}
             classes={classes}
+            subjects={subjects}
             attendance={attendance}
             logs={logs}
+            announcements={announcements}
             onNavigate={(tab) => setCurrentTab(tab)}
             triggerBackup={handleExportDatabase}
           />

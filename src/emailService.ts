@@ -49,7 +49,14 @@ export class EmailService {
 
   async sendEmail(notification: EmailNotification): Promise<{ success: boolean; error?: string }> {
     if (!this.isConfigured()) {
+      console.warn('Email service not configured. Missing Service ID, Template ID, or Public Key.');
       return { success: false, error: 'Email service not configured' };
+    }
+
+    // Validate recipient email
+    if (!notification.recipientEmail || !notification.recipientEmail.includes('@')) {
+      console.warn('Invalid recipient email:', notification.recipientEmail);
+      return { success: false, error: 'Invalid recipient email address' };
     }
 
     try {
@@ -61,6 +68,12 @@ export class EmailService {
         message: notification.plainTextContent || '',
       };
 
+      console.log('Sending email via EmailJS:', {
+        to: notification.recipientEmail,
+        subject: notification.subject,
+        configured: this.isConfigured()
+      });
+
       const response = await emailjs.send(
         this.serviceId,
         this.templateId,
@@ -70,6 +83,8 @@ export class EmailService {
         }
       );
 
+      console.log('EmailJS send successful:', response.status, response.text);
+
       return {
         success: true,
       };
@@ -77,6 +92,7 @@ export class EmailService {
       console.error('EmailJS send failed:', {
         status: error?.status,
         text: error?.text,
+        message: error?.message
       });
 
       return {

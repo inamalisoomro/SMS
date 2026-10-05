@@ -23,6 +23,7 @@ export interface Student {
   cardIssuedAt?: string;
   parentEmail?: string; // Primary parent email for notifications
   secondaryParentEmail?: string; // Secondary parent email
+  registeredAt?: number; // Timestamp when student was first registered
 }
 
 export interface Class {
@@ -76,6 +77,17 @@ export interface ActivityLog {
   action: string;
   details: string;
   timestamp: number;
+}
+
+// ==================== STUDENT LOGIN TRACKING ====================
+
+export interface StudentLoginRecord {
+  id: string;                    // UUID
+  studentId: string;             // Reference to Student
+  loginAt: number;               // Login timestamp
+  logoutAt?: number;             // Logout timestamp (if logged out)
+  sessionId: string;             // Unique session identifier
+  deviceInfo?: string;           // Optional device/browser info
 }
 
 // ==================== EMAIL NOTIFICATION TYPES ====================

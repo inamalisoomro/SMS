@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Users, 
@@ -13,18 +13,25 @@ import {
   Clock, 
   Plus, 
   CheckSquare, 
-  FileBarChart2, 
   Database,
   Calendar,
-  ArrowRight
+  ArrowRight,
+  BookOpen,
+  Megaphone,
+  Mail,
+  MailX,
+  TrendingUp,
+  UserPlus
 } from 'lucide-react';
-import { Student, Class, AttendanceRecord, ActivityLog } from '../types';
+import { Student, Class, Subject, AttendanceRecord, ActivityLog } from '../types';
 
 interface DashboardViewProps {
   students: Student[];
   classes: Class[];
+  subjects: Subject[];
   attendance: AttendanceRecord[];
   logs: ActivityLog[];
+  announcements: any[];
   onNavigate: (tab: string) => void;
   triggerBackup: () => void;
 }
@@ -32,17 +39,31 @@ interface DashboardViewProps {
 export default function DashboardView({
   students,
   classes,
+  subjects,
   attendance,
   logs,
+  announcements,
   onNavigate,
   triggerBackup
 }: DashboardViewProps) {
   // Get today's date in local YYYY-MM-DD
   const todayStr = new Date().toISOString().split('T')[0];
+  const todayStart = new Date(todayStr).getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000;
 
   // Calculate stats
   const totalStudents = students.length;
   const totalClasses = classes.length;
+  const totalSubjects = subjects.length;
+  const totalAnnouncements = announcements.length;
+
+  // Students Registered Today
+  const studentsRegisteredToday = useMemo(() => {
+    return students.filter(s => {
+      if (!s.registeredAt) return false;
+      return s.registeredAt >= todayStart && s.registeredAt < todayEnd;
+    }).length;
+  }, [students, todayStart, todayEnd]);
 
   // Today's attendance records
   const todayRecords = attendance.filter(r => r.date === todayStr);
@@ -56,16 +77,24 @@ export default function DashboardView({
     ? Math.round(((presentToday + lateToday + leaveToday) / totalMarkedToday) * 100) 
     : 0;
 
+  // Email Statistics (from announcements)
+  const emailStats = useMemo(() => {
+    let sent = 0;
+    let failed = 0;
+    announcements.forEach(ann => {
+      if (ann.emailsSent) sent += ann.emailsSent;
+      if (ann.emailsFailed) failed += ann.emailsFailed;
+    });
+    return { sent, failed };
+  }, [announcements]);
+
   // Recent logs
   const recentLogs = logs.slice(0, 4);
 
   // Class-wise submission tracker for today
   const classSubmissionStatus = classes.map(cls => {
-    // Check if there is any attendance record for this class today
     const classRecords = todayRecords.filter(r => r.classId === cls.id);
     const isSubmitted = classRecords.length > 0;
-    
-    // Total students in this class
     const classStudentCount = students.filter(s => s.classId === cls.id).length;
     
     return {
@@ -109,84 +138,148 @@ export default function DashboardView({
             Real-time local metrics and quick administrative operations.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200/40 dark:border-slate-800/40 font-mono text-[10px] text-slate-600 dark:text-slate-400 shadow-sm">
-          <Calendar size={12} className="text-indigo-500" />
-          <span>TODAY: {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+        <div className="flex items-center gap-2">
+          <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200/40 dark:border-slate-800/40 font-mono text-[10px] text-slate-600 dark:text-slate-400 shadow-sm flex items-center gap-2">
+            <Calendar size={12} className="text-indigo-500" />
+            <span>TODAY: {new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+          </div>
         </div>
       </div>
 
-      {/* Stats Bento Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
-        {/* Total Students Card */}
+      {/* Main Stats Grid - 6 Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        {/* Total Students */}
         <motion.div 
           variants={itemVariants}
-          className="lg:col-span-2 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 flex items-center justify-between relative overflow-hidden group"
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('students')}
         >
-          <div className="space-y-1">
-            <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Total Students</span>
-            <h3 className="font-sans font-bold text-2xl text-slate-800 dark:text-slate-100">{totalStudents}</h3>
-            <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Registered in local directory</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 group-hover:scale-105 transition-transform duration-300">
-            <Users size={18} />
-          </div>
-        </motion.div>
-
-        {/* Total Classes Card */}
-        <motion.div 
-          variants={itemVariants}
-          className="lg:col-span-2 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 flex items-center justify-between relative overflow-hidden group"
-        >
-          <div className="space-y-1">
-            <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Active Classes</span>
-            <h3 className="font-sans font-bold text-2xl text-slate-800 dark:text-slate-100">{totalClasses}</h3>
-            <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">With designated sections</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/20 flex items-center justify-center text-amber-500 dark:text-amber-400 group-hover:scale-105 transition-transform duration-300">
-            <GraduationCap size={18} />
-          </div>
-        </motion.div>
-
-        {/* Today's Rate Card (Circular gauge) */}
-        <motion.div 
-          variants={itemVariants}
-          className="lg:col-span-2 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3.5 relative overflow-hidden"
-        >
-          {/* Circular SVG Gauge */}
-          <div className="relative w-12 h-12 flex-shrink-0">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-              <path
-                className="text-slate-100 dark:text-slate-800"
-                strokeWidth="3.5"
-                stroke="currentColor"
-                fill="none"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-              <path
-                className="text-indigo-500 transition-all duration-500"
-                strokeWidth="3.5"
-                strokeDasharray={`${attendanceRateToday}, 100`}
-                strokeLinecap="round"
-                stroke="currentColor"
-                fill="none"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center font-sans font-bold text-[11px] text-slate-700 dark:text-slate-200">
-              {attendanceRateToday}%
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Total Students</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalStudents}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Registered pupils</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 group-hover:scale-105 transition-transform duration-300">
+              <Users size={22} />
             </div>
           </div>
-          <div className="space-y-0.5">
-            <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Attendance Today</span>
-            <h3 className="font-sans font-bold text-sm text-slate-800 dark:text-slate-100">
-              {totalMarkedToday > 0 ? `${totalMarkedToday} marked` : 'Pending'}
-            </h3>
-            <p className="font-sans text-[9px] text-slate-400 dark:text-slate-500">Percentage present/late/leave</p>
+        </motion.div>
+
+        {/* Students Registered Today */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('students')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Registered Today</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{studentsRegisteredToday}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">New registrations</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 group-hover:scale-105 transition-transform duration-300">
+              <UserPlus size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Classes */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('classes')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Active Classes</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalClasses}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">With sections</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-amber-50 dark:bg-amber-950/20 flex items-center justify-center text-amber-500 dark:text-amber-400 group-hover:scale-105 transition-transform duration-300">
+              <GraduationCap size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Subjects */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('subjects')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Subjects</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalSubjects}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Course catalog</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-cyan-50 dark:bg-cyan-950/20 flex items-center justify-center text-cyan-500 dark:text-cyan-400 group-hover:scale-105 transition-transform duration-300">
+              <BookOpen size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Today's Attendance Rate */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            {/* Circular SVG Gauge */}
+            <div className="relative w-14 h-14 flex-shrink-0">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-slate-100 dark:text-slate-800"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-indigo-500 transition-all duration-500"
+                  strokeWidth="3.5"
+                  strokeDasharray={`${attendanceRateToday}, 100`}
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-sans font-bold text-sm text-slate-700 dark:text-slate-200">
+                {attendanceRateToday}%
+              </div>
+            </div>
+            <div className="space-y-0.5">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Attendance Today</span>
+              <h3 className="font-sans font-bold text-lg text-slate-800 dark:text-slate-100">
+                {totalMarkedToday > 0 ? `${totalMarkedToday} marked` : 'No data'}
+              </h3>
+              <p className="font-sans text-[9px] text-slate-400 dark:text-slate-500">Present/late/leave rate</p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Announcements */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('announcements')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Announcements</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalAnnouncements}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Posted messages</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-purple-50 dark:bg-purple-950/20 flex items-center justify-center text-purple-500 dark:text-purple-400 group-hover:scale-105 transition-transform duration-300">
+              <Megaphone size={22} />
+            </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Today's Stats Detail Row */}
+      {/* Today's Attendance Detail Row */}
       {totalMarkedToday > 0 && (
         <motion.div 
           variants={itemVariants}
@@ -231,23 +324,55 @@ export default function DashboardView({
         </motion.div>
       )}
 
-      {/* Core Split Dashboard Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Today's Submission Status Tracker */}
+      {/* Email Statistics Row */}
+      {(emailStats.sent > 0 || emailStats.failed > 0) && (
         <motion.div 
           variants={itemVariants}
-          className="lg:col-span-7 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[300px]"
+          className="grid grid-cols-1 md:grid-cols-2 gap-3"
+        >
+          <div className="bg-emerald-500/5 dark:bg-emerald-500/5 border border-emerald-500/10 dark:border-emerald-500/10 px-4 py-3 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <Mail size={18} />
+              </div>
+              <div>
+                <p className="font-sans text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">Emails Sent</p>
+                <h4 className="font-sans font-bold text-2xl text-slate-700 dark:text-slate-200">{emailStats.sent}</h4>
+              </div>
+            </div>
+            <TrendingUp size={20} className="text-emerald-500/30" />
+          </div>
+          <div className="bg-rose-500/5 dark:bg-rose-500/5 border border-rose-500/10 dark:border-rose-500/10 px-4 py-3 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-500">
+                <MailX size={18} />
+              </div>
+              <div>
+                <p className="font-sans text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">Emails Failed</p>
+                <h4 className="font-sans font-bold text-2xl text-slate-700 dark:text-slate-200">{emailStats.failed}</h4>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Core Split Dashboard Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Class Overview */}
+        <motion.div 
+          variants={itemVariants}
+          className="lg:col-span-5 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[300px]"
         >
           <div className="flex items-center justify-between pb-3 border-b border-slate-200/40 dark:border-slate-800/40 mb-3.5">
             <div>
-              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Classrooms Submission Log</h3>
-              <p className="font-sans text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Completion stats for today's roster</p>
+              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Class Overview</h3>
+              <p className="font-sans text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Today's attendance by class</p>
             </div>
             <button 
               onClick={() => onNavigate('attendance')}
               className="text-xs font-sans font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
             >
-              Take Attendance <ArrowRight size={10} />
+              Mark <ArrowRight size={10} />
             </button>
           </div>
 
@@ -278,17 +403,18 @@ export default function DashboardView({
                     </div>
                     <div>
                       <h4 className="font-sans font-semibold text-xs text-slate-800 dark:text-slate-200">
-                        {cls.name} - Section {cls.section}
+                        {cls.name}-{cls.section}
                       </h4>
                       <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500">
-                        {cls.studentCount} Students total
+                        {cls.studentCount} students
+                        {cls.isSubmitted && ` • ${cls.presentCount} present`}
                       </p>
                     </div>
                   </div>
                   <div>
                     {cls.isSubmitted ? (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-sans text-[10px] font-semibold">
-                        <CheckCircle size={8} /> Completed
+                        <CheckCircle size={8} /> Done
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-sans text-[10px] font-semibold">
@@ -302,80 +428,91 @@ export default function DashboardView({
           </div>
         </motion.div>
 
-        {/* Quick Actions & Activity Logs Side Panel */}
-        <div className="lg:col-span-5 flex flex-col gap-3.5">
-          {/* Quick Actions Panel */}
-          <motion.div 
-            variants={itemVariants}
-            className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm"
-          >
-            <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs pb-2 border-b border-slate-200/40 dark:border-slate-800/40 mb-3">
-              Quick Administrative Actions
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onNavigate('attendance')}
-                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border border-indigo-100 dark:border-indigo-950 bg-indigo-50/20 dark:bg-indigo-950/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-all font-sans font-medium text-[11px] text-center"
-              >
-                <CheckSquare size={16} />
-                <span>Roster Entry</span>
-              </button>
-              <button
-                onClick={() => onNavigate('students')}
-                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
-              >
-                <Plus size={16} className="text-slate-500" />
-                <span>Register Pupil</span>
-              </button>
-              <button
-                onClick={() => onNavigate('reports')}
-                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
-              >
-                <FileBarChart2 size={16} className="text-slate-500" />
-                <span>Syllabus Sheets</span>
-              </button>
-              <button
-                onClick={triggerBackup}
-                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
-              >
-                <Database size={16} className="text-slate-500" />
-                <span>Export JSON</span>
-              </button>
+        {/* System Activity Log */}
+        <motion.div 
+          variants={itemVariants}
+          className="lg:col-span-7 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[300px]"
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200/40 dark:border-slate-800/40 mb-3.5">
+            <div>
+              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Recent Activity</h3>
+              <p className="font-sans text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">System audit trail</p>
             </div>
-          </motion.div>
+          </div>
 
-          {/* Audit Logs (Recent Activities) */}
-          <motion.div 
-            variants={itemVariants}
-            className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex-1 flex flex-col min-h-[180px]"
-          >
-            <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs pb-2 border-b border-slate-200/40 dark:border-slate-800/40 mb-2">
-              System Security Log
-            </h3>
-            <div className="flex-1 space-y-2 overflow-y-auto max-h-[160px] pr-1">
-              {recentLogs.length === 0 ? (
-                <p className="text-slate-400 dark:text-slate-500 text-[11px] text-center py-6">No logged activities.</p>
-              ) : (
-                recentLogs.map((log) => (
-                  <div key={log.id} className="text-[11px] border-b border-slate-100 dark:border-slate-850 pb-1.5 last:border-none">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-sans font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[140px] text-[10px]">
-                        {log.action}
-                      </span>
-                      <span className="font-mono text-[8px] text-slate-400 dark:text-slate-500">
-                        {new Date(log.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="font-sans text-slate-400 dark:text-slate-500 text-[9px] mt-0.5 leading-tight">
-                      {log.details}
-                    </p>
+          <div className="flex-1 space-y-2 overflow-y-auto max-h-[240px] pr-1">
+            {recentLogs.length === 0 ? (
+              <p className="text-slate-400 dark:text-slate-500 text-[11px] text-center py-6">No logged activities.</p>
+            ) : (
+              recentLogs.map((log) => (
+                <div key={log.id} className="text-[11px] border-b border-slate-100 dark:border-slate-850 pb-1.5 last:border-none">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-sans font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[200px] text-[10px]">
+                      {log.action}
+                    </span>
+                    <span className="font-mono text-[8px] text-slate-400 dark:text-slate-500">
+                      {new Date(log.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
                   </div>
-                ))
-              )}
-            </div>
-          </motion.div>
-        </div>
+                  <p className="font-sans text-slate-400 dark:text-slate-500 text-[9px] mt-0.5 leading-tight">
+                    {log.details}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Bottom Grid: Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Quick Actions Panel */}
+        <motion.div 
+          variants={itemVariants}
+          className="lg:col-span-5 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm"
+        >
+          <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs pb-2 border-b border-slate-200/40 dark:border-slate-800/40 mb-3">
+            Quick Actions
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onNavigate('attendance')}
+              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-indigo-100 dark:border-indigo-950 bg-indigo-50/20 dark:bg-indigo-950/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-all font-sans font-medium text-[11px] text-center"
+            >
+              <CheckSquare size={18} />
+              <span>Mark Attendance</span>
+            </button>
+            <button
+              onClick={() => onNavigate('students')}
+              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
+            >
+              <Plus size={18} className="text-slate-500" />
+              <span>Add Student</span>
+            </button>
+            <button
+              onClick={() => onNavigate('announcements')}
+              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
+            >
+              <Megaphone size={18} className="text-slate-500" />
+              <span>Announcement</span>
+            </button>
+            <button
+              onClick={triggerBackup}
+              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-all font-sans font-medium text-[11px] text-center text-slate-700 dark:text-slate-300"
+            >
+              <Database size={18} className="text-slate-500" />
+              <span>Export Data</span>
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Spacer */}
+        <motion.div 
+          variants={itemVariants}
+          className="lg:col-span-7"
+        />
       </div>
     </motion.div>
   );
 }
+

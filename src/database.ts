@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog } from './types';
+import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog, StudentLoginRecord } from './types';
 import { generateStudentQRToken } from './utils';
 
 const DB_NAME = 'SAMS_DB';
-const DB_VERSION = 3; // Incremented for notifications and homework/announcements stores
+const DB_VERSION = 4; // Incremented for student login records store
 
 export class SAMSIndexedDB {
   private db: IDBDatabase | null = null;
@@ -64,6 +64,13 @@ export class SAMSIndexedDB {
         }
         if (!db.objectStoreNames.contains('results')) {
           db.createObjectStore('results', { keyPath: 'id' });
+        }
+        
+        // Version 4: Add student login records store
+        if (!db.objectStoreNames.contains('studentLogins')) {
+          const loginStore = db.createObjectStore('studentLogins', { keyPath: 'id' });
+          loginStore.createIndex('studentId', 'studentId', { unique: false });
+          loginStore.createIndex('loginAt', 'loginAt', { unique: false });
         }
       };
     });
@@ -429,6 +436,34 @@ export class SAMSIndexedDB {
     });
   }
 
+  // --- CRUD for Student Login Records ---
+  async getStudentLoginRecords(): Promise<StudentLoginRecord[]> {
+    const store = await this.getStore('studentLogins');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveStudentLoginRecord(record: StudentLoginRecord): Promise<void> {
+    const store = await this.getStore('studentLogins', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(record);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteStudentLoginRecord(id: string): Promise<void> {
+    const store = await this.getStore('studentLogins', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // Seed default data if database is empty
   async seedIfEmpty(): Promise<boolean> {
     const students = await this.getStudents();
@@ -662,7 +697,7 @@ export class SAMSIndexedDB {
   // Clear all database tables
   async resetDatabase(): Promise<void> {
     const db = await this.init();
-    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results'];
+    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results', 'studentLogins'];
     const transaction = db.transaction(stores, 'readwrite');
     
     stores.forEach((storeName) => {
