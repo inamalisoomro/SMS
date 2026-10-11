@@ -21,28 +21,44 @@ import {
   Mail,
   MailX,
   TrendingUp,
-  UserPlus
+  UserPlus,
+  UserCheck,
+  FileText,
+  Award,
+  FileBadge,
+  DollarSign,
+  AlertCircle
 } from 'lucide-react';
-import { Student, Class, Subject, AttendanceRecord, ActivityLog } from '../types';
+import { Student, Class, Subject, AttendanceRecord, ActivityLog, Teacher, Examination, Result, FeeCharge, Payment } from '../types';
 
 interface DashboardViewProps {
   students: Student[];
+  teachers: Teacher[];
   classes: Class[];
   subjects: Subject[];
   attendance: AttendanceRecord[];
   logs: ActivityLog[];
   announcements: any[];
+  examinations?: Examination[];
+  results?: Result[];
+  feeCharges?: FeeCharge[];
+  payments?: Payment[];
   onNavigate: (tab: string) => void;
   triggerBackup: () => void;
 }
 
 export default function DashboardView({
   students,
+  teachers,
   classes,
   subjects,
   attendance,
   logs,
   announcements,
+  examinations = [],
+  results = [],
+  feeCharges = [],
+  payments = [],
   onNavigate,
   triggerBackup
 }: DashboardViewProps) {
@@ -53,6 +69,7 @@ export default function DashboardView({
 
   // Calculate stats
   const totalStudents = students.length;
+  const totalTeachers = teachers.length;
   const totalClasses = classes.length;
   const totalSubjects = subjects.length;
   const totalAnnouncements = announcements.length;
@@ -65,6 +82,14 @@ export default function DashboardView({
     }).length;
   }, [students, todayStart, todayEnd]);
 
+  // Teachers Registered Today
+  const teachersRegisteredToday = useMemo(() => {
+    return teachers.filter(t => {
+      if (!t.registeredAt) return false;
+      return t.registeredAt >= todayStart && t.registeredAt < todayEnd;
+    }).length;
+  }, [teachers, todayStart, todayEnd]);
+
   // Today's attendance records
   const todayRecords = attendance.filter(r => r.date === todayStr);
   const presentToday = todayRecords.filter(r => r.status === 'present').length;
@@ -73,8 +98,11 @@ export default function DashboardView({
   const leaveToday = todayRecords.filter(r => r.status === 'leave').length;
 
   const totalMarkedToday = todayRecords.length;
-  const attendanceRateToday = totalMarkedToday > 0 
-    ? Math.round(((presentToday + lateToday + leaveToday) / totalMarkedToday) * 100) 
+  // Attendance rate formula: (Present + Late) / (Present + Absent + Late) × 100
+  // Excludes approved leave from calculation
+  const applicableToday = presentToday + absentToday + lateToday;
+  const attendanceRateToday = applicableToday > 0 
+    ? Math.round(((presentToday + lateToday) / applicableToday) * 100) 
     : 0;
 
   // Email Statistics (from announcements)
@@ -87,6 +115,50 @@ export default function DashboardView({
     });
     return { sent, failed };
   }, [announcements]);
+
+  // Examination Statistics
+  const totalExaminations = examinations.length;
+  const publishedResults = useMemo(() => {
+    return results.filter(r => !r.isDraft).length;
+  }, [results]);
+  const draftResults = useMemo(() => {
+    return results.filter(r => r.isDraft).length;
+  }, [results]);
+
+  // Fee Statistics
+  const feeStats = useMemo(() => {
+    let totalOutstanding = 0;
+    let totalCollected = 0;
+    let totalOverdue = 0;
+    let overdueCount = 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    feeCharges.forEach(charge => {
+      const netCharge = charge.amount - charge.discount;
+      const chargePayments = payments.filter(p => p.feeChargeId === charge.id && !p.isVoided);
+      const totalPaid = chargePayments.reduce((sum, p) => sum + p.amount, 0);
+      const balance = Math.max(0, netCharge - totalPaid);
+      
+      totalOutstanding += balance;
+      
+      if (balance > 0 && charge.dueDate < today) {
+        totalOverdue += balance;
+        overdueCount++;
+      }
+    });
+    
+    payments.filter(p => !p.isVoided).forEach(payment => {
+      totalCollected += payment.amount;
+    });
+    
+    return {
+      totalOutstanding,
+      totalCollected,
+      totalOverdue,
+      overdueCount,
+    };
+  }, [feeCharges, payments]);
 
   // Recent logs
   const recentLogs = logs.slice(0, 4);
@@ -146,8 +218,8 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Main Stats Grid - 6 Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      {/* Main Stats Grid - 8 Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Total Students */}
         <motion.div 
           variants={itemVariants}
@@ -179,6 +251,42 @@ export default function DashboardView({
               <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">New registrations</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 group-hover:scale-105 transition-transform duration-300">
+              <UserPlus size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Teachers */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('teachers')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Total Teachers</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalTeachers}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Registered instructors</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-violet-50 dark:bg-violet-950/20 flex items-center justify-center text-violet-500 dark:text-violet-400 group-hover:scale-105 transition-transform duration-300">
+              <UserCheck size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Teachers Registered Today */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('teachers')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Teachers Today</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{teachersRegisteredToday}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">New hires</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-950/20 flex items-center justify-center text-fuchsia-500 dark:text-fuchsia-400 group-hover:scale-105 transition-transform duration-300">
               <UserPlus size={22} />
             </div>
           </div>
@@ -274,6 +382,114 @@ export default function DashboardView({
             </div>
             <div className="w-12 h-12 rounded-lg bg-purple-50 dark:bg-purple-950/20 flex items-center justify-center text-purple-500 dark:text-purple-400 group-hover:scale-105 transition-transform duration-300">
               <Megaphone size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Examinations */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('examinations')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Examinations</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{totalExaminations}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Total exams</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-rose-50 dark:bg-rose-950/20 flex items-center justify-center text-rose-500 dark:text-rose-400 group-hover:scale-105 transition-transform duration-300">
+              <FileText size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Published Results */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('examinations')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Published Results</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{publishedResults}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Visible to parents</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 group-hover:scale-105 transition-transform duration-300">
+              <Award size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Draft Results */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('marks')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Draft Results</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">{draftResults}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Not yet published</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-amber-50 dark:bg-amber-950/20 flex items-center justify-center text-amber-500 dark:text-amber-400 group-hover:scale-105 transition-transform duration-300">
+              <FileBadge size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Outstanding Fees */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('fees')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Outstanding Balance</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">${feeStats.totalOutstanding.toFixed(0)}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">Pending payments</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-orange-50 dark:bg-orange-950/20 flex items-center justify-center text-orange-500 dark:text-orange-400 group-hover:scale-105 transition-transform duration-300">
+              <DollarSign size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Total Collected */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('fees')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Total Collected</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">${feeStats.totalCollected.toFixed(0)}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">All payments</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 group-hover:scale-105 transition-transform duration-300">
+              <DollarSign size={22} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Overdue Amount */}
+        <motion.div 
+          variants={itemVariants}
+          className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 group cursor-pointer"
+          onClick={() => onNavigate('fees')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="font-sans text-[10px] font-semibold tracking-wider uppercase text-slate-400 dark:text-slate-500">Overdue Amount</span>
+              <h3 className="font-sans font-bold text-3xl text-slate-800 dark:text-slate-100">${feeStats.totalOverdue.toFixed(0)}</h3>
+              <p className="font-sans text-[10px] text-slate-400 dark:text-slate-500 font-medium">{feeStats.overdueCount} past due</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-rose-50 dark:bg-rose-950/20 flex items-center justify-center text-rose-500 dark:text-rose-400 group-hover:scale-105 transition-transform duration-300">
+              <AlertCircle size={22} />
             </div>
           </div>
         </motion.div>

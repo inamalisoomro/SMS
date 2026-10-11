@@ -26,6 +26,22 @@ export interface Student {
   registeredAt?: number; // Timestamp when student was first registered
 }
 
+export interface Teacher {
+  id: string; // unique database uuid/id
+  teacherId: string; // human readable custom ID (e.g., TCH-2026-001)
+  name: string;
+  email: string;
+  phone: string;
+  subjectSpecialization?: string; // Primary subject they teach
+  qualification?: string; // Highest qualification (e.g., M.Ed., Ph.D.)
+  experience?: string; // Years of experience
+  joiningDate?: string; // Date joined school (YYYY-MM-DD)
+  photo?: string; // base64 string
+  address?: string;
+  emergencyContact?: string;
+  registeredAt?: number; // Timestamp when teacher was first registered
+}
+
 export interface Class {
   id: string;
   name: string;
@@ -64,6 +80,7 @@ export interface AppSettings {
   emailJsPublicKey?: string; // EmailJS public key
   emailJsServiceId?: string; // EmailJS service ID
   emailJsTemplateId?: string; // EmailJS template ID
+  currency?: string; // Currency symbol for fee management (default: '$')
 }
 
 export interface AcademicSession {
@@ -77,6 +94,10 @@ export interface ActivityLog {
   action: string;
   details: string;
   timestamp: number;
+  // RBAC Audit fields (optional for backward compatibility)
+  userId?: string;
+  userRole?: UserRole;
+  username?: string;
 }
 
 // ==================== STUDENT LOGIN TRACKING ====================
@@ -171,24 +192,309 @@ export interface Announcement {
   attachments?: string[];
 }
 
+// ==================== EXAMINATION & RESULTS ====================
+
+export interface Examination {
+  id: string;
+  name: string; // e.g., "Midterm Exam", "Final Exam", "Monthly Test"
+  academicYear: string; // e.g., "2026-2027"
+  examDate: string; // YYYY-MM-DD
+  classIds: string[]; // Classes taking this exam
+  subjectIds: string[]; // Subjects in this exam
+  maxMarks: number; // Maximum marks per subject (can be overridden per subject)
+  description?: string;
+  createdAt: number;
+  createdBy?: string;
+}
+
 export interface Result {
   id: string;
   studentId: string;
   classId: string;
+  examinationId: string; // Reference to Examination
   examName: string;
   examDate: string;
+  academicYear: string;
   subjects: {
     subjectId: string;
     subjectName: string;
     marksObtained: number;
     totalMarks: number;
     grade?: string;
+    remarks?: string;
   }[];
   totalObtained: number;
   totalMaxMarks: number;
   percentage: number;
-  grade: string;
+  overallGrade: string;
   rank?: number;
   remarks?: string;
-  publishedAt: number;
+  isDraft: boolean; // true = draft, false = published
+  publishedAt?: number; // Timestamp when published
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface GradeScale {
+  grade: string;
+  minPercentage: number;
+  maxPercentage: number;
+  description: string;
+}
+
+// ==================== FEE MANAGEMENT ====================
+
+export interface FeeCategory {
+  id: string;
+  name: string; // e.g., "Tuition Fee", "Admission Fee", "Examination Fee", "Transport Fee"
+  description?: string;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export interface FeeCharge {
+  id: string;
+  studentId: string;
+  categoryId: string; // Reference to FeeCategory
+  categoryName: string; // Denormalized for quick access
+  academicYear: string; // e.g., "2026-2027"
+  feePeriod: string; // e.g., "Q1 2026", "January 2026", "Annual 2026"
+  amount: number; // Original fee amount
+  discount: number; // Approved discount/adjustment (default 0)
+  dueDate: string; // YYYY-MM-DD format
+  status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue'; // Calculated from payments
+  remarks?: string; // Optional notes
+  createdAt: number;
+  createdBy?: string;
+  updatedAt: number;
+}
+
+export interface Payment {
+  id: string;
+  receiptNumber: string; // Unique receipt identifier (e.g., "REC-2026-001")
+  feeChargeId: string; // Reference to FeeCharge
+  studentId: string;
+  amount: number; // Amount paid
+  paymentDate: string; // YYYY-MM-DD format
+  paymentMethod: 'cash' | 'cheque' | 'bank_transfer' | 'online' | 'other';
+  referenceNumber?: string; // Cheque number, transaction ID, etc.
+  notes?: string; // Optional payment notes
+  createdAt: number;
+  createdBy?: string;
+  isVoided: boolean; // For voided/cancelled payments
+  voidedAt?: number;
+  voidedBy?: string;
+  voidReason?: string;
+}
+
+export interface FeeReminder {
+  id: string;
+  studentId: string;
+  feeChargeIds: string[]; // Multiple fees can be included in one reminder
+  sentAt: number;
+  sentTo: string[]; // Email addresses
+  reminderType: 'overdue' | 'due_soon' | 'general';
+  emailStatus: 'sent' | 'failed';
+  failureReason?: string;
+}
+
+// Fee statistics for dashboard
+export interface FeeStatistics {
+  totalOutstanding: number;
+  totalPaid: number;
+  totalOverdue: number;
+  studentsWithDues: number;
+  paymentsThisMonth: number;
+  overdueCount: number;
+}
+
+// ==================== ROLE-BASED ACCESS CONTROL ====================
+
+export type UserRole = 'principal' | 'administrator' | 'teacher' | 'parent';
+
+export type Permission =
+  | 'view_dashboard'
+  | 'view_students'
+  | 'manage_students'
+  | 'view_teachers'
+  | 'manage_teachers'
+  | 'view_classes'
+  | 'manage_classes'
+  | 'view_subjects'
+  | 'manage_subjects'
+  | 'view_attendance'
+  | 'mark_attendance'
+  | 'view_reports'
+  | 'view_analytics'
+  | 'view_announcements'
+  | 'manage_announcements'
+  | 'view_examinations'
+  | 'manage_examinations'
+  | 'enter_marks'
+  | 'publish_results'
+  | 'view_results'
+  | 'view_fees'
+  | 'manage_fees'
+  | 'view_settings'
+  | 'manage_settings'
+  | 'backup_restore'
+  | 'view_parent_portal';
+
+export interface User {
+  id: string; // UUID
+  username: string; // For display purposes in local prototype
+  role: UserRole;
+  // For teachers - link to teacher record
+  teacherId?: string;
+  // For parents - link to student record(s)
+  linkedStudentIds?: string[];
+  createdAt: number;
+  lastLoginAt?: number;
+}
+
+export interface TeacherAssignment {
+  id: string; // UUID
+  teacherId: string; // Reference to Teacher
+  classId: string; // Reference to Class
+  subjectId: string; // Reference to Subject
+  academicYear: string; // e.g., "2026-2027"
+  assignedAt: number;
+}
+
+// ==================== BACKUP & RESTORE SYSTEM ====================
+
+export type RestoreMode = 'replace' | 'merge';
+
+export interface BackupMetadata {
+  backupFormatVersion: string; // e.g., "2.0"
+  appVersion?: string; // Application version if available
+  dbSchemaVersion: number; // IndexedDB version number
+  createdAt: number; // Timestamp when backup was created
+  recordCounts: {
+    students: number;
+    teachers: number;
+    classes: number;
+    subjects: number;
+    attendance: number;
+    sessions: number;
+    logs: number;
+    settings: number;
+    notifications: number;
+    homework: number;
+    announcements: number;
+    results: number;
+    studentLogins: number;
+    examinations: number;
+    feeCategories: number;
+    feeCharges: number;
+    payments: number;
+    feeReminders: number;
+    users: number;
+    teacherAssignments: number;
+  };
+}
+
+export interface BackupData {
+  metadata: BackupMetadata;
+  // All data stores
+  students: Student[];
+  teachers: Teacher[];
+  classes: Class[];
+  subjects: Subject[];
+  attendance: AttendanceRecord[];
+  sessions: AcademicSession[];
+  logs: ActivityLog[];
+  settings: any[]; // IndexedDB settings store (not localStorage)
+  notifications: EmailNotification[];
+  homework: Homework[];
+  announcements: Announcement[];
+  results: Result[];
+  studentLogins: StudentLoginRecord[];
+  examinations: Examination[];
+  feeCategories: FeeCategory[];
+  feeCharges: FeeCharge[];
+  payments: Payment[];
+  feeReminders: FeeReminder[];
+  users: User[];
+  teacherAssignments: TeacherAssignment[];
+  // Optional: localStorage settings (excluded by default for security)
+  appSettings?: AppSettings;
+  // Legacy format support
+  version?: string; // Old format version marker
+  exportedAt?: number; // Old format timestamp
+}
+
+export type ValidationSeverity = 'error' | 'warning' | 'info';
+
+export interface ValidationIssue {
+  severity: ValidationSeverity;
+  store?: string; // Which store has the issue
+  recordId?: string; // Specific record ID
+  field?: string; // Specific field
+  message: string; // Human-readable issue description
+}
+
+export interface ValidationResult {
+  isValid: boolean; // Overall validity
+  issues: ValidationIssue[]; // All detected issues
+  errorCount: number;
+  warningCount: number;
+  infoCount: number;
+  isLegacyFormat: boolean; // True if backup is old format (v1.0)
+  detectedFormatVersion: string;
+  metadata?: BackupMetadata; // Parsed metadata if available
+}
+
+export interface RestorePreview {
+  backupDate: Date | null;
+  backupFormatVersion: string;
+  dbSchemaVersion: number | null;
+  recordCounts: {
+    students: number;
+    teachers: number;
+    classes: number;
+    subjects: number;
+    attendance: number;
+    sessions: number;
+    logs: number;
+    settings: number;
+    notifications: number;
+    homework: number;
+    announcements: number;
+    results: number;
+    studentLogins: number;
+    examinations: number;
+    feeCategories: number;
+    feeCharges: number;
+    payments: number;
+    feeReminders: number;
+    users: number;
+    teacherAssignments: number;
+  };
+  includesAppSettings: boolean;
+  validation: ValidationResult;
+}
+
+export interface MergeConflict {
+  store: string;
+  recordId: string;
+  existingRecord: any;
+  incomingRecord: any;
+  reason: string; // Why it's a conflict
+}
+
+export interface MergeResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  conflicts: MergeConflict[];
+}
+
+export interface RestoreResult {
+  success: boolean;
+  mode: RestoreMode;
+  recordsRestored: number;
+  mergeResult?: MergeResult;
+  errors: string[];
+  warnings: string[];
 }

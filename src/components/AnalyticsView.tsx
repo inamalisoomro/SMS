@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   BarChart3, 
@@ -12,107 +12,125 @@ import {
   AlertTriangle, 
   Search,
   CheckCircle,
-  GraduationCap
+  GraduationCap,
+  ArrowLeft,
+  Info,
+  Calendar,
+  Users
 } from 'lucide-react';
 import { Student, Class, AttendanceRecord } from '../types';
+import { getAttendanceStats } from '../utils';
 
 interface AnalyticsViewProps {
   students: Student[];
   classes: Class[];
   attendance: AttendanceRecord[];
+  onNavigate?: (tab: string) => void;
 }
 
 export default function AnalyticsView({
   students,
   classes,
-  attendance
+  attendance,
+  onNavigate
 }: AnalyticsViewProps) {
   const [studentSearch, setStudentSearch] = useState('');
 
   // --- ANALYTICS CALCULATIONS ---
 
   // 1. Line Chart: Last 7 Days Attendance Trend
-  // Get list of last 7 unique dates where attendance was recorded
-  const uniqueDates = Array.from(new Set(attendance.map(r => r.date)))
-    .sort()
-    .slice(-7);
+  const trendData = useMemo(() => {
+    const uniqueDates = Array.from(new Set(attendance.map(r => r.date)))
+      .sort()
+      .slice(-7);
 
-  const trendData = uniqueDates.map(dateStr => {
-    const dayRecords = attendance.filter(r => r.date === dateStr);
-    const present = dayRecords.filter(r => r.status === 'present').length;
-    const late = dayRecords.filter(r => r.status === 'late').length;
-    const leave = dayRecords.filter(r => r.status === 'leave').length;
-    const total = dayRecords.length;
+    return uniqueDates.map(dateStr => {
+      const dayRecords = attendance.filter(r => r.date === dateStr);
+      const stats = getAttendanceStats(dayRecords);
+      
+      // Format date label
+      const d = new Date(dateStr + 'T00:00:00');
+      const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-    const rate = total > 0 ? Math.round(((present + late + leave) / total) * 100) : 0;
+      return { 
+        label, 
+        value: stats.percentage || 0, 
+        date: dateStr,
+        total: stats.total
+      };
+    });
+  }, [attendance]);
+
+  // 2. Pie Chart: Overall Status Distribution
+  const overallStats = useMemo(() => getAttendanceStats(attendance), [attendance]);
+
+  const pieSegments = useMemo(() => {
+    if (overallStats.total === 0) return [];
     
-    // Formatting date label like "Jul 17"
-    const d = new Date(dateStr);
-    const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const total = overallStats.total;
+    return [
+      { label: 'Present', count: overallStats.present, percentage: (overallStats.present / total) * 100, color: '#10b981' },
+      { label: 'Absent', count: overallStats.absent, percentage: (overallStats.absent / total) * 100, color: '#ef4444' },
+      { label: 'Late', count: overallStats.late, percentage: (overallStats.late / total) * 100, color: '#f59e0b' },
+      { label: 'Leave', count: overallStats.leave, percentage: (overallStats.leave / total) * 100, color: '#6366f1' }
+    ].filter(seg => seg.count > 0);
+  }, [overallStats]);
 
-    return { label, value: rate, date: dateStr };
-  });
+  // 3. Class-wise Averages (Bar Chart)
+  const classAverages = useMemo(() => {
+    return classes.map(cls => {
+      const classRecords = attendance.filter(r => r.classId === cls.id);
+      const stats = getAttendanceStats(classRecords);
 
-  // 2. Pie Chart: Overall Status Ratio
-  const totalRecordsCount = attendance.length;
-  const presentCount = attendance.filter(r => r.status === 'present').length;
-  const absentCount = attendance.filter(r => r.status === 'absent').length;
-  const lateCount = attendance.filter(r => r.status === 'late').length;
-  const leaveCount = attendance.filter(r => r.status === 'leave').length;
+      return {
+        label: `${cls.name}-${cls.section}`,
+        value: stats.percentage || 0,
+        totalCount: stats.total,
+        hasRecords: stats.total > 0
+      };
+    }).filter(item => item.hasRecords); // Only show classes with records
+  }, [classes, attendance]);
 
-  const presentPercentage = totalRecordsCount > 0 ? Math.round((presentCount / totalRecordsCount) * 100) : 0;
-  const absentPercentage = totalRecordsCount > 0 ? Math.round((absentCount / totalRecordsCount) * 100) : 0;
-  const latePercentage = totalRecordsCount > 0 ? Math.round((lateCount / totalRecordsCount) * 100) : 0;
-  const leavePercentage = totalRecordsCount > 0 ? Math.round((leaveCount / totalRecordsCount) * 100) : 0;
+  // 4. Student Metrics with Risk Analysis
+  const studentMetrics = useMemo(() => {
+    return students.map(st => {
+      const stRecords = attendance.filter(r => r.studentId === st.id);
+      const stats = getAttendanceStats(stRecords);
 
-  // 3. Class-wise Averages (Vertical Bar Chart)
-  const classAverages = classes.map(cls => {
-    const classRecords = attendance.filter(r => r.classId === cls.id);
-    const present = classRecords.filter(r => r.status === 'present').length;
-    const late = classRecords.filter(r => r.status === 'late').length;
-    const leave = classRecords.filter(r => r.status === 'leave').length;
-    const total = classRecords.length;
+      const cls = classes.find(c => c.id === st.classId);
 
-    const rate = total > 0 ? Math.round(((present + late + leave) / total) * 100) : 0;
+      return {
+        ...st,
+        className: cls ? `${cls.name}-${cls.section}` : 'N/A',
+        stats
+      };
+    }).filter(m => m.stats.total > 0); // Only show students with records
+  }, [students, attendance, classes]);
 
-    return {
-      label: `${cls.name}-${cls.section}`,
-      value: rate,
-      totalCount: total
-    };
-  });
-
-  // 4. Student Attendance List & Attendance Risk Warnings
-  const studentMetrics = students.map(st => {
-    const stRecords = attendance.filter(r => r.studentId === st.id);
-    const total = stRecords.length;
-    const present = stRecords.filter(r => r.status === 'present').length;
-    const late = stRecords.filter(r => r.status === 'late').length;
-    const leave = stRecords.filter(r => r.status === 'leave').length;
-
-    const rate = total > 0 ? Math.round(((present + late + leave) / total) * 100) : 100; // default to 100 if no classes recorded
-
-    const cls = classes.find(c => c.id === st.classId);
-
-    return {
-      ...st,
-      className: cls ? `${cls.name}-${cls.section}` : 'N/A',
-      rate,
-      totalClasses: total
-    };
-  });
-
-  const filteredStudentMetrics = studentMetrics.filter(m => 
-    m.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-    m.studentId.toLowerCase().includes(studentSearch.toLowerCase())
-  ).sort((a, b) => a.rate - b.rate); // low attendance rates first
+  const filteredStudentMetrics = useMemo(() => {
+    return studentMetrics
+      .filter(m => 
+        m.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+        m.studentId.toLowerCase().includes(studentSearch.toLowerCase())
+      )
+      .sort((a, b) => {
+        // Sort by percentage (low to high), then by name
+        const aPerc = a.stats.percentage !== null ? a.stats.percentage : 100;
+        const bPerc = b.stats.percentage !== null ? b.stats.percentage : 100;
+        return aPerc - bPerc;
+      });
+  }, [studentMetrics, studentSearch]);
 
   // Risk count (< 75%)
-  const studentsAtRisk = studentMetrics.filter(m => m.rate < 75 && m.totalClasses > 0);
+  const studentsAtRisk = useMemo(() => {
+    return studentMetrics.filter(m => 
+      m.stats.percentage !== null && m.stats.percentage < 75
+    );
+  }, [studentMetrics]);
 
   // --- SVG DRAWING HELPERS ---
 
-  // Donut chart path drawing (Sector ring)
+  // Donut chart segment drawing
   const drawDonutSegment = (startPercent: number, endPercent: number, color: string) => {
     const startAngle = (startPercent / 100) * 360 - 90;
     const endAngle = (endPercent / 100) * 360 - 90;
@@ -145,296 +163,316 @@ export default function AnalyticsView({
       'Z'
     ].join(' ');
 
-    return <path d={pathData} fill={color} stroke="white" strokeWidth="1" className="transition-all duration-300 hover:opacity-90 cursor-pointer" />;
+    return <path d={pathData} fill={color} stroke="white" strokeWidth="1" className="transition-all duration-300 hover:opacity-80" />;
   };
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      {/* Upper Navigation Header */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
-            Visual Analytics Dashboard
-          </h2>
-          <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Real-time biometric insights, attendance trend mapping, and classroom performance audits.
-          </p>
+        <div className="flex items-center gap-3">
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div>
+            <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
+              Visual Analytics Dashboard
+            </h2>
+            <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Interactive charts and trends for attendance patterns and performance analysis
+            </p>
+          </div>
         </div>
 
         {/* Risk Status Indicator */}
         {studentsAtRisk.length > 0 && (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/15 rounded-lg text-xs font-semibold shadow-inner">
-            <AlertTriangle size={13} />
-            <span>{studentsAtRisk.length} Student(s) below 75% attendance threshold!</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 rounded-lg text-xs font-semibold">
+            <AlertTriangle size={14} />
+            <span>{studentsAtRisk.length} Student(s) below 75% attendance</span>
           </div>
         )}
       </div>
 
-      {/* Analytics Bento Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+      {/* Overall Stats Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-3 rounded-xl">
+          <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 font-bold mb-1">Total Records</div>
+          <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">{overallStats.total}</div>
+        </div>
+        <div className="bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/50 p-3 rounded-xl">
+          <div className="text-[9px] font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-bold mb-1">Present</div>
+          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{overallStats.present}</div>
+        </div>
+        <div className="bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/50 dark:border-rose-800/50 p-3 rounded-xl">
+          <div className="text-[9px] font-mono uppercase tracking-wider text-rose-600 dark:text-rose-400 font-bold mb-1">Absent</div>
+          <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{overallStats.absent}</div>
+        </div>
+        <div className="bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/50 p-3 rounded-xl">
+          <div className="text-[9px] font-mono uppercase tracking-wider text-amber-600 dark:text-amber-400 font-bold mb-1">Late</div>
+          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{overallStats.late}</div>
+        </div>
+        <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/50 p-3 rounded-xl relative group">
+          <div className="text-[9px] font-mono uppercase tracking-wider text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
+            Attendance % <Info size={10} className="cursor-help" />
+          </div>
+          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+            {overallStats.percentage !== null ? `${overallStats.percentage}%` : 'N/A'}
+          </div>
+          {/* Tooltip */}
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            <strong>Formula:</strong> (Present + Late) / (Present + Absent + Late) × 100
+            <br />
+            <em className="text-slate-300">Leave excluded</em>
+          </div>
+        </div>
+      </div>
+
+      {/* Analytics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* 1. LINE CHART: TREND MAPPING */}
-        <div className="lg:col-span-8 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[280px]">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
-            <div className="flex items-center gap-1.5">
-              <TrendingUp size={15} className="text-indigo-500" />
-              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs">Attendance Trend (Last 7 Sessions)</h3>
+        {/* 1. LINE CHART: TREND */}
+        <div className="lg:col-span-8 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm min-h-[300px]">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={16} className="text-indigo-500" />
+              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">7-Day Attendance Trend</h3>
             </div>
-            <span className="font-mono text-[9px] text-slate-400">DAILY OVERALL RATE %</span>
+            <span className="font-mono text-[9px] text-slate-400 uppercase tracking-wider">Daily Rate %</span>
           </div>
 
-          <div className="flex-1 flex items-end justify-center w-full pb-1 relative min-h-[170px]">
-            {trendData.length === 0 ? (
-              <p className="text-center text-slate-400 text-xs py-8 font-sans">Insufficient data to render trend. Submit attendance across multiple days.</p>
-            ) : (
-              <div className="w-full h-full flex flex-col justify-between">
-                {/* Visual SVG Drawing Area */}
-                <div className="flex-1 w-full relative">
-                  <svg className="w-full h-full min-h-[140px]" viewBox="0 0 500 150" preserveAspectRatio="none">
-                    {/* Grid Y-lines */}
-                    {[20, 50, 80, 110, 140].map((y, idx) => (
-                      <line key={idx} x1="30" y1={y} x2="490" y2={y} stroke="#f1f5f9" className="dark:stroke-slate-800/40" strokeWidth="1" />
-                    ))}
-
-                    {/* Chart Path Line drawing */}
-                    {(() => {
-                      const points = trendData.map((d, idx) => {
-                        const x = 30 + (idx * 450) / (trendData.length - 1);
-                        // map 0-100 percentage to 140-20 Y coordinates
-                        const y = 140 - (d.value / 100) * 120;
-                        return { x, y };
-                      });
-
-                      const pathD = points.reduce((acc, p, idx) => {
-                        return idx === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`;
-                      }, '');
-
-                      const areaD = points.length > 0 
-                        ? `${pathD} L ${points[points.length - 1].x} 140 L ${points[0].x} 140 Z`
-                        : '';
-
-                      return (
-                        <>
-                          {/* Gradient filled area under line */}
-                          <defs>
-                            <linearGradient id="trend-grad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.15" />
-                              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
-                            </linearGradient>
-                          </defs>
-                          <path d={areaD} fill="url(#trend-grad)" />
-
-                          {/* Smooth stroke path */}
-                          <path d={pathD} fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-
-                          {/* Data dots */}
-                          {points.map((p, idx) => (
-                            <g key={idx} className="group/dot cursor-pointer">
-                              <circle cx={p.x} cy={p.y} r="3.5" fill="#4f46e5" stroke="white" strokeWidth="1.5" />
-                              <circle cx={p.x} cy={p.y} r="7" fill="#4f46e5" className="opacity-0 group-hover/dot:opacity-20 transition-all duration-200" />
-                            </g>
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </svg>
-                </div>
-
-                {/* X labels */}
-                <div className="flex justify-between font-sans text-[9px] text-slate-400 font-semibold px-[25px] pt-1">
-                  {trendData.map((d, idx) => (
-                    <div key={idx} className="text-center w-14 truncate">
-                      {d.label}
-                      <span className="block font-mono font-bold text-slate-700 dark:text-slate-300 mt-0.5">{d.value}%</span>
+          {trendData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-center">
+              <Calendar size={48} className="text-slate-300 dark:text-slate-700 mb-3" />
+              <p className="text-slate-500 dark:text-slate-400 font-semibold text-sm">No attendance data available</p>
+              <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Start marking attendance to see trends</p>
+            </div>
+          ) : (
+            <div className="flex items-end justify-between gap-2 h-48 px-2">
+              {trendData.map((point, idx) => {
+                const maxHeight = 160;
+                const height = (point.value / 100) * maxHeight;
+                return (
+                  <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
+                    {/* Bar */}
+                    <div className="relative flex-1 flex items-end w-full justify-center">
+                      <div 
+                        className="w-full max-w-[40px] rounded-t-lg bg-gradient-to-t from-indigo-600 to-indigo-400 transition-all duration-300 group-hover:from-indigo-700 group-hover:to-indigo-500 relative"
+                        style={{ height: `${height}px` }}
+                      >
+                        {/* Percentage label on hover */}
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {point.value}%
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                    {/* Date label */}
+                    <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 font-semibold">{point.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* 2. PIE CHART: OVERALL DISTRIBUTION */}
-        <div className="lg:col-span-4 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[280px]">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
-            <div className="flex items-center gap-1.5">
-              <PieIcon size={15} className="text-violet-500" />
-              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs">Status Share (Overall)</h3>
+        {/* 2. PIE/DONUT CHART: STATUS DISTRIBUTION */}
+        <div className="lg:col-span-4 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm min-h-[300px]">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+            <PieIcon size={16} className="text-indigo-500" />
+            <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Status Distribution</h3>
+          </div>
+
+          {pieSegments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-center">
+              <PieIcon size={48} className="text-slate-300 dark:text-slate-700 mb-3" />
+              <p className="text-slate-500 dark:text-slate-400 font-semibold text-sm">No data to display</p>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              {/* SVG Donut */}
+              <svg width="160" height="160" viewBox="0 0 160 160" className="mb-4">
+                {(() => {
+                  let cumulativePercent = 0;
+                  return pieSegments.map((segment, idx) => {
+                    const startPercent = cumulativePercent;
+                    cumulativePercent += segment.percentage;
+                    return (
+                      <g key={idx}>
+                        {drawDonutSegment(startPercent, cumulativePercent, segment.color)}
+                      </g>
+                    );
+                  });
+                })()}
+                {/* Center text */}
+                <text x="80" y="75" textAnchor="middle" className="text-xs font-bold fill-slate-700 dark:fill-slate-300">
+                  {overallStats.total}
+                </text>
+                <text x="80" y="90" textAnchor="middle" className="text-[10px] fill-slate-400">
+                  Records
+                </text>
+              </svg>
 
-          <div className="flex-1 flex flex-col items-center justify-center">
-            {totalRecordsCount === 0 ? (
-              <p className="text-center text-slate-400 text-xs py-8 font-sans">No logs saved yet.</p>
-            ) : (
-              <div className="flex flex-col items-center gap-4 w-full">
-                {/* Circular SVG Donut */}
-                <div className="relative w-28 h-28 flex-shrink-0">
-                  <svg className="w-full h-full" viewBox="0 0 160 160">
-                    {(() => {
-                      // Pie shares mapping
-                      const shares = [
-                        { val: presentPercentage, color: '#10b981' }, // emerald-500
-                        { val: absentPercentage, color: '#f43f5e' }, // rose-500
-                        { val: latePercentage, color: '#f59e0b' }, // amber-500
-                        { val: leavePercentage, color: '#6366f1' } // indigo-500
-                      ].filter(s => s.val > 0);
-
-                      let accumulated = 0;
-                      return shares.map((segment, idx) => {
-                        const start = accumulated;
-                        const end = accumulated + segment.val;
-                        accumulated = end;
-                        return (
-                          <g key={idx}>
-                            {drawDonutSegment(start, end, segment.color)}
-                          </g>
-                        );
-                      });
-                    })()}
-                  </svg>
-                  {/* Inner text block */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center leading-tight">
-                    <span className="font-mono font-bold text-base text-slate-800 dark:text-slate-100">{totalRecordsCount}</span>
-                    <span className="text-[8px] uppercase font-mono text-slate-400 font-semibold mt-0.5">Logs</span>
+              {/* Legend */}
+              <div className="w-full space-y-1.5">
+                {pieSegments.map((segment, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-sm" 
+                        style={{ backgroundColor: segment.color }}
+                      />
+                      <span className="text-slate-600 dark:text-slate-400 font-medium">{segment.label}</span>
+                    </div>
+                    <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      {segment.count} ({segment.percentage.toFixed(1)}%)
+                    </span>
                   </div>
-                </div>
-
-                {/* Legend list */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[9px] font-sans w-full px-2">
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded bg-emerald-500 flex-shrink-0" />
-                    <span className="text-slate-500 truncate">PRESENT: <strong className="text-slate-700 dark:text-slate-300 font-mono">{presentPercentage}%</strong></span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded bg-rose-500 flex-shrink-0" />
-                    <span className="text-slate-500 truncate">ABSENT: <strong className="text-slate-700 dark:text-slate-300 font-mono">{absentPercentage}%</strong></span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded bg-amber-500 flex-shrink-0" />
-                    <span className="text-slate-500 truncate">LATE: <strong className="text-slate-700 dark:text-slate-300 font-mono">{latePercentage}%</strong></span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded bg-indigo-500 flex-shrink-0" />
-                    <span className="text-slate-500 truncate">LEAVE: <strong className="text-slate-700 dark:text-slate-300 font-mono">{leavePercentage}%</strong></span>
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* 3. CLASS-WISE AVERAGES BAR CHART */}
-        <div className="lg:col-span-4 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[280px]">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
-            <div className="flex items-center gap-1.5">
-              <GraduationCap size={15} className="text-amber-500" />
-              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs">Class Averages</h3>
+        {/* 3. CLASS-WISE BAR CHART */}
+        <div className="lg:col-span-12 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+            <div className="flex items-center gap-2">
+              <GraduationCap size={16} className="text-indigo-500" />
+              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Class-wise Attendance Comparison</h3>
             </div>
+            <span className="font-mono text-[9px] text-slate-400 uppercase tracking-wider">Attendance Rate %</span>
           </div>
 
-          <div className="flex-1 flex flex-col justify-center space-y-2.5">
-            {classAverages.length === 0 ? (
-              <p className="text-center text-slate-400 text-xs py-8 font-sans">No classes registered.</p>
-            ) : (
-              classAverages.map((cls, idx) => (
-                <div key={idx} className="space-y-0.5 text-[11px]">
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                    <span className="font-sans font-semibold">{cls.label}</span>
-                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{cls.value}% Avg</span>
+          {classAverages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 text-center">
+              <GraduationCap size={48} className="text-slate-300 dark:text-slate-700 mb-3" />
+              <p className="text-slate-500 dark:text-slate-400 font-semibold text-sm">No class attendance data</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {classAverages.map((cls, idx) => (
+                <div key={idx} className="group">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{cls.label}</span>
+                    <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{cls.value}%</span>
                   </div>
-                  {/* Bar background track */}
-                  <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800/60 overflow-hidden relative border border-slate-200/20">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${cls.value}%` }}
-                      transition={{ duration: 0.6, delay: idx * 0.05 }}
-                      className={`h-full rounded-full ${
-                        cls.value >= 85 
-                          ? 'bg-emerald-500' 
-                          : cls.value >= 75 
-                          ? 'bg-amber-500' 
-                          : 'bg-rose-500 animate-pulse'
+                  <div className="h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        cls.value >= 90 ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
+                        cls.value >= 75 ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
+                        cls.value >= 60 ? 'bg-gradient-to-r from-amber-500 to-amber-400' :
+                        'bg-gradient-to-r from-rose-500 to-rose-400'
                       }`}
+                      style={{ width: `${cls.value}%` }}
                     />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400">
+                        {cls.totalCount} records
+                      </span>
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 4. STUDENT ATTENDANCE DIRECTORY & AT-RISK ANALYSIS */}
-        <div className="lg:col-span-8 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm flex flex-col min-h-[280px]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle size={15} className="text-indigo-500" />
-              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xs">Student Attendance Ledger</h3>
+        {/* 4. STUDENT LIST WITH SEARCH */}
+        <div className="lg:col-span-12 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 p-4 rounded-xl shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-indigo-500" />
+              <h3 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-sm">Student Attendance Performance</h3>
             </div>
             
-            {/* Inner search query */}
-            <div className="relative max-w-xs">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            {/* Search */}
+            <div className="relative max-w-xs w-full">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder="Search pupil..."
-                className="pl-7 pr-2.5 py-1 bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-300 font-sans"
+                placeholder="Search students..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 dark:text-slate-300"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-[200px] pr-1 space-y-2">
-            {filteredStudentMetrics.length === 0 ? (
-              <p className="text-center text-slate-400 text-xs py-8 font-sans">No search results found.</p>
-            ) : (
-              filteredStudentMetrics.map((st) => (
-                <div 
-                  key={st.id}
-                  className="flex items-center justify-between p-2 rounded-lg border border-slate-100 dark:border-slate-850 bg-slate-50/30 dark:bg-slate-900/10"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold text-xs">
-                      {st.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h4 className="font-sans font-semibold text-[11px] text-slate-800 dark:text-slate-200">
-                        {st.name}
-                      </h4>
-                      <p className="font-sans text-[9px] text-slate-400 dark:text-slate-500 font-medium">
-                        ID: {st.studentId} • Class {st.className}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5">
-                    <div className="text-right">
-                      <span className={`font-mono text-[11px] font-bold ${
-                        st.rate >= 85 
-                          ? 'text-emerald-600 dark:text-emerald-400' 
-                          : st.rate >= 75 
-                          ? 'text-amber-500' 
-                          : 'text-rose-500'
-                      }`}>
-                        {st.rate}%
-                      </span>
-                      <span className="block text-[8px] text-slate-400 dark:text-slate-500 font-medium font-mono">{st.totalClasses} classes</span>
-                    </div>
-
-                    {/* Status dot warning code */}
-                    {st.rate < 75 && st.totalClasses > 0 ? (
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" title="At Risk! Attendance below 75%" />
-                    ) : (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500/30 flex-shrink-0" />
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          {filteredStudentMetrics.length === 0 ? (
+            <div className="text-center py-8">
+              <Users size={48} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+              <p className="text-slate-500 dark:text-slate-400 font-semibold text-sm">
+                {studentSearch ? 'No students found matching your search' : 'No student attendance records'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 font-bold">Student</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 font-bold">Class</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 font-bold text-center">Sessions</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-emerald-600 dark:text-emerald-400 font-bold text-center">Present</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 font-bold text-center">Absent</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-amber-600 dark:text-amber-400 font-bold text-center">Late</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 font-bold text-center">Rate</th>
+                    <th className="px-3 py-2 text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400 font-bold text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                  {filteredStudentMetrics.map(student => {
+                    const percentage = student.stats.percentage !== null ? student.stats.percentage : 0;
+                    const isAtRisk = percentage < 75;
+                    
+                    return (
+                      <tr key={student.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/20 ${isAtRisk ? 'bg-rose-50/30 dark:bg-rose-950/10' : ''}`}>
+                        <td className="px-3 py-2">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{student.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{student.studentId}</div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{student.className}</td>
+                        <td className="px-3 py-2 text-center font-mono text-slate-600 dark:text-slate-400">{student.stats.total}</td>
+                        <td className="px-3 py-2 text-center font-mono font-semibold text-emerald-600 dark:text-emerald-400">{student.stats.present}</td>
+                        <td className="px-3 py-2 text-center font-mono font-semibold text-rose-600 dark:text-rose-400">{student.stats.absent}</td>
+                        <td className="px-3 py-2 text-center font-mono font-semibold text-amber-600 dark:text-amber-400">{student.stats.late}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`font-mono font-bold ${
+                            percentage >= 90 ? 'text-emerald-600 dark:text-emerald-400' :
+                            percentage >= 75 ? 'text-blue-600 dark:text-blue-400' :
+                            percentage >= 60 ? 'text-amber-600 dark:text-amber-400' :
+                            'text-rose-600 dark:text-rose-400'
+                          }`}>
+                            {percentage}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {isAtRisk ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-[10px] font-semibold">
+                              <AlertTriangle size={10} />
+                              At Risk
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
+                              <CheckCircle size={10} />
+                              Good
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-
       </div>
     </div>
   );

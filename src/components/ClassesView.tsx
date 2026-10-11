@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Edit, GraduationCap, Users, X, Info } from 'lucide-react';
+import { Plus, Trash2, Edit, GraduationCap, Users, X, Info, ArrowLeft } from 'lucide-react';
 import { Class, Student } from '../types';
 
 interface ClassesViewProps {
@@ -14,6 +14,7 @@ interface ClassesViewProps {
   onAddClass: (cls: Omit<Class, 'id'>) => Promise<void>;
   onUpdateClass: (cls: Class) => Promise<void>;
   onDeleteClass: (id: string) => Promise<void>;
+  onNavigate?: (tab: string) => void;
 }
 
 export default function ClassesView({
@@ -21,7 +22,8 @@ export default function ClassesView({
   students,
   onAddClass,
   onUpdateClass,
-  onDeleteClass
+  onDeleteClass,
+  onNavigate
 }: ClassesViewProps) {
   const [formName, setFormName] = useState('');
   const [formSection, setFormSection] = useState('');
@@ -66,13 +68,24 @@ export default function ClassesView({
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      <div>
-        <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
-          Classes & Sections Management
-        </h2>
-        <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Add new structural courses, divisions, and map designated academic sections.
-        </p>
+      <div className="flex items-center gap-3">
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        <div>
+          <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
+            Classes & Sections Management
+          </h2>
+          <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Add new structural courses, divisions, and map designated academic sections.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">

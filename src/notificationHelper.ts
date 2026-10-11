@@ -141,7 +141,7 @@ export async function sendResultNotification(
         studentName: student.name,
         examName: result.examName,
         percentage: result.percentage.toFixed(2),
-        grade: result.grade,
+        grade: result.overallGrade,
         totalObtained: result.totalObtained.toString(),
         totalMaxMarks: result.totalMaxMarks.toString(),
         schoolName: settings.schoolName,

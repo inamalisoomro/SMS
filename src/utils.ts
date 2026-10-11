@@ -509,3 +509,778 @@ export function fileToBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+// ==================== GRADE CALCULATION UTILITIES ====================
+
+/**
+ * Calculate grade based on percentage using standard grading scale
+ * @param percentage - Percentage score (0-100)
+ * @returns Grade letter (A, B, C, D, F)
+ */
+export function calculateGrade(percentage: number): string {
+  if (percentage >= 90) return 'A';
+  if (percentage >= 75) return 'B';
+  if (percentage >= 60) return 'C';
+  if (percentage >= 45) return 'D';
+  return 'F';
+}
+
+/**
+ * Get grade color class for Tailwind CSS
+ * @param grade - Grade letter
+ * @returns Tailwind color classes
+ */
+export function getGradeColorClass(grade: string): string {
+  switch (grade) {
+    case 'A':
+      return 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400';
+    case 'B':
+      return 'bg-cyan-100 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-400';
+    case 'C':
+      return 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400';
+    case 'D':
+      return 'bg-orange-100 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400';
+    case 'F':
+      return 'bg-rose-100 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400';
+    default:
+      return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300';
+  }
+}
+
+/**
+ * Get grade description/remarks
+ * @param grade - Grade letter
+ * @returns Human-readable grade description
+ */
+export function getGradeDescription(grade: string): string {
+  switch (grade) {
+    case 'A':
+      return 'Excellent';
+    case 'B':
+      return 'Good';
+    case 'C':
+      return 'Satisfactory';
+    case 'D':
+      return 'Needs Improvement';
+    case 'F':
+      return 'Unsatisfactory';
+    default:
+      return 'Not Graded';
+  }
+}
+
+/**
+ * Calculate overall grade from subject grades
+ * @param subjectGrades - Array of grade letters
+ * @returns Overall grade letter
+ */
+export function calculateOverallGrade(subjectGrades: string[]): string {
+  if (subjectGrades.length === 0) return 'F';
+  
+  // Convert grades to numeric values
+  const gradeValues: { [key: string]: number } = {
+    'A': 95,
+    'B': 82.5,
+    'C': 67.5,
+    'D': 52.5,
+    'F': 22.5
+  };
+  
+  const totalValue = subjectGrades.reduce((sum, grade) => {
+    return sum + (gradeValues[grade] || 0);
+  }, 0);
+  
+  const averagePercentage = totalValue / subjectGrades.length;
+  return calculateGrade(averagePercentage);
+}
+
+/**
+ * Get grading scale configuration
+ * @returns Array of grade scale definitions
+ */
+export function getGradingScale(): Array<{ grade: string; min: number; max: number; description: string }> {
+  return [
+    { grade: 'A', min: 90, max: 100, description: 'Excellent' },
+    { grade: 'B', min: 75, max: 89, description: 'Good' },
+    { grade: 'C', min: 60, max: 74, description: 'Satisfactory' },
+    { grade: 'D', min: 45, max: 59, description: 'Needs Improvement' },
+    { grade: 'F', min: 0, max: 44, description: 'Unsatisfactory' }
+  ];
+}
+
+// ==================== FEE CALCULATION UTILITIES ====================
+
+/**
+ * Calculate fee balance for a specific fee charge
+ * @param feeChargeId - ID of the fee charge
+ * @param feeCharge - The fee charge object
+ * @param payments - Array of all payments
+ * @returns Object with netCharge, totalPaid, and balance
+ */
+export function calculateFeeBalance(
+  feeChargeId: string,
+  feeCharge: { amount: number; discount: number },
+  payments: Array<{ feeChargeId: string; amount: number; isVoided: boolean }>
+): { netCharge: number; totalPaid: number; balance: number } {
+  const netCharge = feeCharge.amount - feeCharge.discount;
+  
+  const totalPaid = payments
+    .filter(p => p.feeChargeId === feeChargeId && !p.isVoided)
+    .reduce((sum, p) => sum + p.amount, 0);
+  
+  const balance = Math.max(0, netCharge - totalPaid);
+  
+  return { netCharge, totalPaid, balance };
+}
+
+/**
+ * Update fee charge status based on payments
+ * @param feeCharge - Fee charge to update
+ * @param balance - Current balance
+ * @returns Updated status
+ */
+export function calculateFeeStatus(
+  feeCharge: { amount: number; discount: number; dueDate: string },
+  balance: number
+): 'paid' | 'partially_paid' | 'unpaid' | 'overdue' {
+  const netCharge = feeCharge.amount - feeCharge.discount;
+  const today = new Date().toISOString().split('T')[0];
+  
+  if (balance === 0) {
+    return 'paid';
+  } else if (balance < netCharge) {
+    return 'partially_paid';
+  } else if (feeCharge.dueDate < today) {
+    return 'overdue';
+  } else {
+    return 'unpaid';
+  }
+}
+
+/**
+ * Generate unique receipt number
+ * @param prefix - Receipt prefix (default: 'REC')
+ * @param year - Year (default: current year)
+ * @param sequence - Sequence number
+ * @returns Formatted receipt number
+ */
+export function generateReceiptNumber(
+  prefix: string = 'REC',
+  year?: number,
+  sequence?: number
+): string {
+  const currentYear = year || new Date().getFullYear();
+  const seq = sequence || Math.floor(Math.random() * 9999) + 1;
+  return `${prefix}-${currentYear}-${seq.toString().padStart(4, '0')}`;
+}
+
+/**
+ * Validate payment amount
+ * @param amount - Payment amount
+ * @param balance - Outstanding balance
+ * @returns Validation result
+ */
+export function validatePaymentAmount(
+  amount: number,
+  balance: number
+): { valid: boolean; error?: string } {
+  if (isNaN(amount) || !isFinite(amount)) {
+    return { valid: false, error: 'Payment amount must be a valid number' };
+  }
+  
+  if (amount <= 0) {
+    return { valid: false, error: 'Payment amount must be greater than zero' };
+  }
+  
+  if (amount > balance * 1.1) {
+    // Allow 10% overpayment for rounding/advance payment
+    return { valid: false, error: `Payment amount exceeds outstanding balance by more than 10%` };
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Format currency amount
+ * @param amount - Amount to format
+ * @param currency - Currency symbol (default: '$')
+ * @returns Formatted currency string
+ */
+export function formatCurrency(amount: number, currency: string = '$'): string {
+  return `${currency}${amount.toFixed(2)}`;
+}
+
+// ==================== ATTENDANCE CALCULATIONS ====================
+
+/**
+ * Calculate attendance percentage using the standard formula:
+ * Attendance % = (Present + Late) / (Present + Absent + Late) × 100
+ * 
+ * Approved leave records are excluded from both numerator and denominator.
+ * This reflects actual attendance vs. expected attendance.
+ * 
+ * @param present - Count of present records
+ * @param absent - Count of absent records
+ * @param late - Count of late records
+ * @param leave - Count of leave records (not used in calculation, for reference)
+ * @returns Attendance percentage (0-100) or null if no applicable records
+ */
+export function calculateAttendancePercentage(
+  present: number,
+  absent: number,
+  late: number,
+  leave: number
+): number | null {
+  // Denominator: Present + Absent + Late (excludes approved leave)
+  const denominator = present + absent + late;
+  
+  // Handle zero denominator (no attendance records or only leave records)
+  if (denominator === 0) {
+    return null;
+  }
+  
+  // Numerator: Present + Late (students who attended, even if late)
+  const numerator = present + late;
+  
+  // Calculate percentage
+  const percentage = (numerator / denominator) * 100;
+  
+  return Math.round(percentage);
+}
+
+/**
+ * Get attendance statistics summary for a set of attendance records
+ * @param records - Array of attendance records to analyze
+ * @returns Object with counts and calculated percentage
+ */
+export function getAttendanceStats(records: { status: 'present' | 'absent' | 'late' | 'leave' }[]) {
+  const present = records.filter(r => r.status === 'present').length;
+  const absent = records.filter(r => r.status === 'absent').length;
+  const late = records.filter(r => r.status === 'late').length;
+  const leave = records.filter(r => r.status === 'leave').length;
+  const total = records.length;
+  
+  const percentage = calculateAttendancePercentage(present, absent, late, leave);
+  
+  return {
+    present,
+    absent,
+    late,
+    leave,
+    total,
+    percentage,
+    hasRecords: total > 0
+  };
+}
+
+/**
+ * Calculate fee statistics
+ * @param feeCharges - Array of fee charges
+ * @param payments - Array of payments
+ * @param calculateBalance - Balance calculation function
+ * @returns Fee statistics object
+ */
+export function calculateFeeStatistics(
+  feeCharges: Array<any>,
+  payments: Array<any>,
+  calculateBalance: (feeChargeId: string) => { balance: number }
+): {
+  totalOutstanding: number;
+  totalPaid: number;
+  totalOverdue: number;
+  studentsWithDues: number;
+  paymentsThisMonth: number;
+  overdueCount: number;
+} {
+  let totalOutstanding = 0;
+  let totalPaid = 0;
+  let totalOverdue = 0;
+  const studentsWithDues = new Set<string>();
+  let overdueCount = 0;
+  
+  const today = new Date().toISOString().split('T')[0];
+  
+  feeCharges.forEach(charge => {
+    const { balance } = calculateBalance(charge.id);
+    totalOutstanding += balance;
+    
+    if (balance > 0) {
+      studentsWithDues.add(charge.studentId);
+      
+      if (charge.dueDate < today) {
+        totalOverdue += balance;
+        overdueCount++;
+      }
+    }
+  });
+  
+  payments.filter(p => !p.isVoided).forEach(payment => {
+    totalPaid += payment.amount;
+  });
+  
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const paymentsThisMonth = payments.filter(p => 
+    !p.isVoided && p.paymentDate.startsWith(thisMonth)
+  ).reduce((sum, p) => sum + p.amount, 0);
+  
+  return {
+    totalOutstanding,
+    totalPaid,
+    totalOverdue,
+    studentsWithDues: studentsWithDues.size,
+    paymentsThisMonth,
+    overdueCount
+  };
+}
+
+// ==================== BACKUP VALIDATION UTILITIES ====================
+
+import type { ValidationResult, ValidationIssue, BackupData, BackupMetadata } from './types';
+
+/**
+ * Comprehensive backup validation function
+ * Validates JSON syntax, format version, structure, record shapes, IDs, and referential integrity
+ * @param fileContent - Raw file content string
+ * @returns ValidationResult with detailed issues
+ */
+export function validateBackup(fileContent: string): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  let parsed: any;
+  let isLegacyFormat = false;
+  let detectedFormatVersion = 'unknown';
+  let metadata: BackupMetadata | undefined;
+
+  // Step 1: JSON Syntax Validation
+  try {
+    parsed = JSON.parse(fileContent);
+  } catch (err) {
+    issues.push({
+      severity: 'error',
+      message: `Invalid JSON syntax: ${err instanceof Error ? err.message : 'Unable to parse file'}`,
+    });
+    return {
+      isValid: false,
+      issues,
+      errorCount: 1,
+      warningCount: 0,
+      infoCount: 0,
+      isLegacyFormat: false,
+      detectedFormatVersion: 'invalid',
+    };
+  }
+
+  // Step 2: Format Version Detection
+  if (parsed.metadata?.backupFormatVersion) {
+    detectedFormatVersion = parsed.metadata.backupFormatVersion;
+    metadata = parsed.metadata;
+    isLegacyFormat = false;
+  } else if (parsed.version === '1.0' && parsed.exportedAt) {
+    detectedFormatVersion = '1.0';
+    isLegacyFormat = true;
+    issues.push({
+      severity: 'info',
+      message: 'Legacy backup format (v1.0) detected. Missing metadata section.',
+    });
+  } else {
+    issues.push({
+      severity: 'error',
+      message: 'Unknown backup format. Missing both metadata.backupFormatVersion and legacy version marker.',
+    });
+    return {
+      isValid: false,
+      issues,
+      errorCount: 1,
+      warningCount: 0,
+      infoCount: 0,
+      isLegacyFormat: false,
+      detectedFormatVersion: 'unknown',
+    };
+  }
+
+  // Step 3: Validate Required Top-Level Structure
+  const requiredCoreStores = ['students', 'classes', 'subjects', 'attendance'];
+  const allStores = [
+    'students', 'teachers', 'classes', 'subjects', 'attendance', 'sessions',
+    'logs', 'settings', 'notifications', 'homework', 'announcements', 'results',
+    'studentLogins', 'examinations', 'feeCategories', 'feeCharges', 'payments',
+    'feeReminders', 'users', 'teacherAssignments'
+  ];
+
+  for (const store of requiredCoreStores) {
+    if (!parsed[store]) {
+      issues.push({
+        severity: 'error',
+        store,
+        message: `Required store '${store}' is missing from backup.`,
+      });
+    } else if (!Array.isArray(parsed[store])) {
+      issues.push({
+        severity: 'error',
+        store,
+        message: `Store '${store}' must be an array.`,
+      });
+    }
+  }
+
+  // Check for optional stores and warn if missing (v2.0 format only)
+  if (!isLegacyFormat) {
+    for (const store of allStores) {
+      if (!requiredCoreStores.includes(store) && !parsed[store]) {
+        issues.push({
+          severity: 'warning',
+          store,
+          message: `Optional store '${store}' is missing. This may indicate an incomplete backup.`,
+        });
+      }
+    }
+  }
+
+  // Step 4: Validate Record Shapes and Required Fields
+  const validateRecords = (storeName: string, records: any[], requiredFields: string[]) => {
+    if (!Array.isArray(records)) return;
+
+    const seenIds = new Set<string>();
+    
+    records.forEach((record, index) => {
+      // Check required fields
+      for (const field of requiredFields) {
+        if (record[field] === undefined || record[field] === null || record[field] === '') {
+          issues.push({
+            severity: 'error',
+            store: storeName,
+            recordId: record.id || `index-${index}`,
+            field,
+            message: `Record at index ${index} is missing required field '${field}'.`,
+          });
+        }
+      }
+
+      // Check for duplicate IDs
+      if (record.id) {
+        if (seenIds.has(record.id)) {
+          issues.push({
+            severity: 'error',
+            store: storeName,
+            recordId: record.id,
+            message: `Duplicate ID '${record.id}' found in store '${storeName}'.`,
+          });
+        }
+        seenIds.add(record.id);
+      } else {
+        issues.push({
+          severity: 'error',
+          store: storeName,
+          recordId: `index-${index}`,
+          message: `Record at index ${index} is missing 'id' field.`,
+        });
+      }
+
+      // Validate numeric fields
+      const numericFields: { [key: string]: string[] } = {
+        attendance: ['updatedAt'],
+        logs: ['timestamp'],
+        students: ['registeredAt'],
+        teachers: ['registeredAt'],
+        results: ['totalObtained', 'totalMaxMarks', 'percentage', 'createdAt', 'updatedAt'],
+        examinations: ['maxMarks', 'createdAt'],
+        feeCategories: ['createdAt'],
+        feeCharges: ['amount', 'discount', 'createdAt', 'updatedAt'],
+        payments: ['amount', 'createdAt'],
+        feeReminders: ['sentAt'],
+        users: ['createdAt'],
+        teacherAssignments: ['assignedAt'],
+        notifications: ['createdAt'],
+        homework: ['createdAt'],
+        announcements: ['createdAt'],
+        studentLogins: ['loginAt'],
+      };
+
+      if (numericFields[storeName]) {
+        for (const field of numericFields[storeName]) {
+          if (record[field] !== undefined && (typeof record[field] !== 'number' || isNaN(record[field]))) {
+            issues.push({
+              severity: 'error',
+              store: storeName,
+              recordId: record.id,
+              field,
+              message: `Field '${field}' must be a valid number.`,
+            });
+          }
+        }
+      }
+
+      // Validate date fields (YYYY-MM-DD format)
+      const dateFields: { [key: string]: string[] } = {
+        attendance: ['date'],
+        feeCharges: ['dueDate'],
+        payments: ['paymentDate'],
+        examinations: ['examDate'],
+        results: ['examDate'],
+        homework: ['dueDate', 'assignedDate'],
+        announcements: ['publishedDate'],
+      };
+
+      if (dateFields[storeName]) {
+        for (const field of dateFields[storeName]) {
+          if (record[field] && !/^\d{4}-\d{2}-\d{2}$/.test(record[field])) {
+            issues.push({
+              severity: 'warning',
+              store: storeName,
+              recordId: record.id,
+              field,
+              message: `Field '${field}' should be in YYYY-MM-DD format.`,
+            });
+          }
+        }
+      }
+    });
+  };
+
+  // Validate each store
+  if (parsed.students) validateRecords('students', parsed.students, ['id', 'name', 'studentId', 'classId']);
+  if (parsed.teachers) validateRecords('teachers', parsed.teachers, ['id', 'name', 'teacherId', 'email']);
+  if (parsed.classes) validateRecords('classes', parsed.classes, ['id', 'name', 'section']);
+  if (parsed.subjects) validateRecords('subjects', parsed.subjects, ['id', 'name']);
+  if (parsed.attendance) validateRecords('attendance', parsed.attendance, ['id', 'studentId', 'classId', 'subjectId', 'date', 'status']);
+  if (parsed.examinations) validateRecords('examinations', parsed.examinations, ['id', 'name', 'examDate']);
+  if (parsed.results) validateRecords('results', parsed.results, ['id', 'studentId', 'examinationId']);
+  if (parsed.feeCategories) validateRecords('feeCategories', parsed.feeCategories, ['id', 'name']);
+  if (parsed.feeCharges) validateRecords('feeCharges', parsed.feeCharges, ['id', 'studentId', 'categoryId', 'amount']);
+  if (parsed.payments) validateRecords('payments', parsed.payments, ['id', 'feeChargeId', 'studentId', 'amount']);
+  if (parsed.users) validateRecords('users', parsed.users, ['id', 'username', 'role']);
+
+  // Step 5: Referential Integrity Checks
+  if (parsed.students && parsed.classes) {
+    const classIds = new Set(parsed.classes.map((c: any) => c.id));
+    parsed.students.forEach((student: any, index: number) => {
+      if (student.classId && !classIds.has(student.classId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'students',
+          recordId: student.id,
+          field: 'classId',
+          message: `Student references non-existent class '${student.classId}'.`,
+        });
+      }
+    });
+  }
+
+  if (parsed.attendance && parsed.students && parsed.classes && parsed.subjects) {
+    const studentIds = new Set(parsed.students.map((s: any) => s.id));
+    const classIds = new Set(parsed.classes.map((c: any) => c.id));
+    const subjectIds = new Set(parsed.subjects.map((s: any) => s.id));
+
+    parsed.attendance.forEach((att: any) => {
+      if (att.studentId && !studentIds.has(att.studentId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'attendance',
+          recordId: att.id,
+          field: 'studentId',
+          message: `Attendance record references non-existent student '${att.studentId}'.`,
+        });
+      }
+      if (att.classId && !classIds.has(att.classId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'attendance',
+          recordId: att.id,
+          field: 'classId',
+          message: `Attendance record references non-existent class '${att.classId}'.`,
+        });
+      }
+      if (att.subjectId && !subjectIds.has(att.subjectId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'attendance',
+          recordId: att.id,
+          field: 'subjectId',
+          message: `Attendance record references non-existent subject '${att.subjectId}'.`,
+        });
+      }
+    });
+  }
+
+  if (parsed.feeCharges && parsed.students) {
+    const studentIds = new Set(parsed.students.map((s: any) => s.id));
+    parsed.feeCharges.forEach((charge: any) => {
+      if (charge.studentId && !studentIds.has(charge.studentId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'feeCharges',
+          recordId: charge.id,
+          field: 'studentId',
+          message: `Fee charge references non-existent student '${charge.studentId}'.`,
+        });
+      }
+    });
+  }
+
+  if (parsed.payments && parsed.feeCharges && parsed.students) {
+    const feeChargeIds = new Set(parsed.feeCharges.map((fc: any) => fc.id));
+    const studentIds = new Set(parsed.students.map((s: any) => s.id));
+    
+    parsed.payments.forEach((payment: any) => {
+      if (payment.feeChargeId && !feeChargeIds.has(payment.feeChargeId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'payments',
+          recordId: payment.id,
+          field: 'feeChargeId',
+          message: `Payment references non-existent fee charge '${payment.feeChargeId}'.`,
+        });
+      }
+      if (payment.studentId && !studentIds.has(payment.studentId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'payments',
+          recordId: payment.id,
+          field: 'studentId',
+          message: `Payment references non-existent student '${payment.studentId}'.`,
+        });
+      }
+    });
+  }
+
+  if (parsed.teacherAssignments && parsed.teachers && parsed.classes && parsed.subjects) {
+    const teacherIds = new Set(parsed.teachers.map((t: any) => t.id));
+    const classIds = new Set(parsed.classes.map((c: any) => c.id));
+    const subjectIds = new Set(parsed.subjects.map((s: any) => s.id));
+
+    parsed.teacherAssignments.forEach((assignment: any) => {
+      if (assignment.teacherId && !teacherIds.has(assignment.teacherId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'teacherAssignments',
+          recordId: assignment.id,
+          field: 'teacherId',
+          message: `Assignment references non-existent teacher '${assignment.teacherId}'.`,
+        });
+      }
+      if (assignment.classId && !classIds.has(assignment.classId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'teacherAssignments',
+          recordId: assignment.id,
+          field: 'classId',
+          message: `Assignment references non-existent class '${assignment.classId}'.`,
+        });
+      }
+      if (assignment.subjectId && !subjectIds.has(assignment.subjectId)) {
+        issues.push({
+          severity: 'warning',
+          store: 'teacherAssignments',
+          recordId: assignment.id,
+          field: 'subjectId',
+          message: `Assignment references non-existent subject '${assignment.subjectId}'.`,
+        });
+      }
+    });
+  }
+
+  // Step 6: Metadata Validation (v2.0 format)
+  if (!isLegacyFormat && metadata) {
+    if (!metadata.createdAt || typeof metadata.createdAt !== 'number') {
+      issues.push({
+        severity: 'warning',
+        message: 'Backup metadata is missing valid createdAt timestamp.',
+      });
+    }
+
+    if (!metadata.dbSchemaVersion || typeof metadata.dbSchemaVersion !== 'number') {
+      issues.push({
+        severity: 'warning',
+        message: 'Backup metadata is missing valid dbSchemaVersion.',
+      });
+    }
+
+    if (metadata.recordCounts) {
+      // Verify record counts match actual data
+      for (const store of allStores) {
+        if (parsed[store] && Array.isArray(parsed[store])) {
+          const actualCount = parsed[store].length;
+          const metadataCount = metadata.recordCounts[store as keyof typeof metadata.recordCounts];
+          
+          if (metadataCount !== actualCount) {
+            issues.push({
+              severity: 'warning',
+              store,
+              message: `Metadata reports ${metadataCount} records but actual count is ${actualCount}.`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Calculate issue counts
+  const errorCount = issues.filter(i => i.severity === 'error').length;
+  const warningCount = issues.filter(i => i.severity === 'warning').length;
+  const infoCount = issues.filter(i => i.severity === 'info').length;
+
+  return {
+    isValid: errorCount === 0,
+    issues,
+    errorCount,
+    warningCount,
+    infoCount,
+    isLegacyFormat,
+    detectedFormatVersion,
+    metadata,
+  };
+}
+
+/**
+ * Preview backup file contents without modifying database
+ * @param fileContent - Raw file content string
+ * @returns RestorePreview with metadata and validation
+ */
+export function previewBackup(fileContent: string): any {
+  const validation = validateBackup(fileContent);
+  
+  if (!validation.isValid) {
+    return {
+      backupDate: null,
+      backupFormatVersion: validation.detectedFormatVersion,
+      dbSchemaVersion: null,
+      recordCounts: {},
+      includesAppSettings: false,
+      validation,
+    };
+  }
+
+  const parsed = JSON.parse(fileContent);
+  
+  // Extract metadata
+  let backupDate: Date | null = null;
+  let dbSchemaVersion: number | null = null;
+  
+  if (parsed.metadata?.createdAt) {
+    backupDate = new Date(parsed.metadata.createdAt);
+    dbSchemaVersion = parsed.metadata.dbSchemaVersion || null;
+  } else if (parsed.exportedAt) {
+    backupDate = new Date(parsed.exportedAt);
+  }
+
+  // Count records
+  const recordCounts: any = {};
+  const stores = [
+    'students', 'teachers', 'classes', 'subjects', 'attendance', 'sessions',
+    'logs', 'settings', 'notifications', 'homework', 'announcements', 'results',
+    'studentLogins', 'examinations', 'feeCategories', 'feeCharges', 'payments',
+    'feeReminders', 'users', 'teacherAssignments'
+  ];
+
+  for (const store of stores) {
+    recordCounts[store] = Array.isArray(parsed[store]) ? parsed[store].length : 0;
+  }
+
+  return {
+    backupDate,
+    backupFormatVersion: validation.detectedFormatVersion,
+    dbSchemaVersion,
+    recordCounts,
+    includesAppSettings: !!parsed.appSettings,
+    validation,
+  };
+}

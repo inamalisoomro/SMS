@@ -21,12 +21,15 @@ import {
   Camera,
   Droplet,
   FileText,
-  Loader2
+  Loader2,
+  ArrowLeft,
+  Lock
 } from 'lucide-react';
-import { Student, Class, AppSettings } from '../types';
+import { Student, Class, AppSettings, User, TeacherAssignment } from '../types';
 import { exportToCSV, parseCSV, generateStudentQRToken } from '../utils';
 import { downloadBatchCardsPDF } from '../utils/idCardExport';
 import StudentCard from './StudentCard';
+import { hasPermission } from '../permissions';
 
 interface StudentsViewProps {
   students: Student[];
@@ -37,6 +40,9 @@ interface StudentsViewProps {
   onDeleteStudent: (id: string) => Promise<void>;
   onImportStudents: (students: Omit<Student, 'id'>[]) => Promise<void>;
   onReissueToken: (studentId: string) => Promise<Student | undefined | void>;
+  onNavigate?: (tab: string) => void;
+  currentUser: User | null;
+  teacherAssignments: TeacherAssignment[];
 }
 
 export default function StudentsView({
@@ -48,7 +54,13 @@ export default function StudentsView({
   onDeleteStudent,
   onImportStudents,
   onReissueToken,
+  onNavigate,
+  currentUser,
+  teacherAssignments,
 }: StudentsViewProps) {
+  // Permission checks
+  const canManageStudents = currentUser ? hasPermission(currentUser, 'manage_students') : false;
+  const canViewOnly = !canManageStudents;
   // Navigation & filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('all');
@@ -344,13 +356,24 @@ export default function StudentsView({
     <div className="space-y-4 max-w-7xl mx-auto">
       {/* Search and Main Filters Area */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div>
-          <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
-            Students Directory & ID Center
-          </h2>
-          <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Maintain digital student records, generate CR80 smart identity passes with secure QR tokens, and batch print badges.
-          </p>
+        <div className="flex items-center gap-3">
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div>
+            <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
+              Students Directory & ID Center
+            </h2>
+            <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Maintain digital student records, generate CR80 smart identity passes with secure QR tokens, and batch print badges.
+            </p>
+          </div>
         </div>
 
         {/* Directory Controls */}
@@ -413,14 +436,21 @@ export default function StudentsView({
             <span>Export CSV</span>
           </button>
 
-          {/* Add Student button */}
-          <button
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all"
-          >
-            <Plus size={13} />
-            <span>Register Student</span>
-          </button>
+          {/* Add Student button - only show if user has manage permission */}
+          {canManageStudents ? (
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all"
+            >
+              <Plus size={13} />
+              <span>Register Student</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg text-xs font-semibold" title="Read-only access">
+              <Lock size={12} />
+              <span>Read-only</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -545,20 +575,24 @@ export default function StudentsView({
                           <QrCode size={12} />
                           <span>ID Card</span>
                         </button>
-                        <button
-                          onClick={() => handleOpenEditModal(student)}
-                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors inline-block"
-                          title="Edit Info"
-                        >
-                          <Edit size={12} />
-                        </button>
-                        <button
-                          onClick={() => onDeleteStudent(student.id)}
-                          className="p-1 rounded bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 transition-colors inline-block"
-                          title="Delete Record"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {canManageStudents && (
+                          <>
+                            <button
+                              onClick={() => handleOpenEditModal(student)}
+                              className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors inline-block"
+                              title="Edit Info"
+                            >
+                              <Edit size={12} />
+                            </button>
+                            <button
+                              onClick={() => onDeleteStudent(student.id)}
+                              className="p-1 rounded bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 transition-colors inline-block"
+                              title="Delete Record"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -635,18 +669,22 @@ export default function StudentsView({
                   >
                     <QrCode size={11} /> Pass
                   </button>
-                  <button
-                    onClick={() => handleOpenEditModal(student)}
-                    className="px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-all"
-                  >
-                    <Edit size={11} />
-                  </button>
-                  <button
-                    onClick={() => onDeleteStudent(student.id)}
-                    className="px-2 py-1 rounded hover:bg-rose-500/5 border border-rose-100 dark:border-rose-950/20 text-rose-500 text-[11px] font-semibold transition-all"
-                  >
-                    <Trash2 size={11} />
-                  </button>
+                  {canManageStudents && (
+                    <>
+                      <button
+                        onClick={() => handleOpenEditModal(student)}
+                        className="px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold transition-all"
+                      >
+                        <Edit size={11} />
+                      </button>
+                      <button
+                        onClick={() => onDeleteStudent(student.id)}
+                        className="px-2 py-1 rounded hover:bg-rose-500/5 border border-rose-100 dark:border-rose-950/20 text-rose-500 text-[11px] font-semibold transition-all"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             );

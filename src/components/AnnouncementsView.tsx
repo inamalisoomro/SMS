@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Megaphone, Plus, Send, Trash2, Calendar, AlertCircle, Users, CheckCircle, Loader2 } from 'lucide-react';
+import { Megaphone, Plus, Send, Trash2, Calendar, AlertCircle, Users, CheckCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { Announcement, Student, Class, AppSettings } from '../types';
 import { sendAnnouncementNotification } from '../notificationHelper';
 import { emailService } from '../emailService';
@@ -18,6 +18,7 @@ interface AnnouncementsViewProps {
   onAddAnnouncement: (announcement: Omit<Announcement, 'id'>) => Promise<void>;
   onDeleteAnnouncement: (id: string) => Promise<void>;
   triggerToast: (type: 'success' | 'error' | 'info', message: string) => void;
+  onNavigate?: (tab: string) => void;
 }
 
 export default function AnnouncementsView({
@@ -27,7 +28,8 @@ export default function AnnouncementsView({
   settings,
   onAddAnnouncement,
   onDeleteAnnouncement,
-  triggerToast
+  triggerToast,
+  onNavigate
 }: AnnouncementsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -162,13 +164,24 @@ export default function AnnouncementsView({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
-            School Announcements
-          </h2>
-          <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Post announcements and notify parents via email
-          </p>
+        <div className="flex items-center gap-3">
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div>
+            <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight">
+              School Announcements
+            </h2>
+            <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Post announcements and notify parents via email
+            </p>
+          </div>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}

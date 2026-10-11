@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog, StudentLoginRecord } from './types';
+import { Student, Class, Subject, AttendanceRecord, AcademicSession, ActivityLog, StudentLoginRecord, Teacher, Examination, Result, FeeCategory, FeeCharge, Payment, FeeReminder, User, TeacherAssignment, UserRole } from './types';
 import { generateStudentQRToken } from './utils';
 
 const DB_NAME = 'SAMS_DB';
-const DB_VERSION = 4; // Incremented for student login records store
+const DB_VERSION = 8; // Incremented for User and TeacherAssignment stores
 
 export class SAMSIndexedDB {
   private db: IDBDatabase | null = null;
@@ -72,6 +72,50 @@ export class SAMSIndexedDB {
           loginStore.createIndex('studentId', 'studentId', { unique: false });
           loginStore.createIndex('loginAt', 'loginAt', { unique: false });
         }
+        
+        // Version 5: Add teachers store
+        if (!db.objectStoreNames.contains('teachers')) {
+          db.createObjectStore('teachers', { keyPath: 'id' });
+        }
+        
+        // Version 6: Add examinations store
+        if (!db.objectStoreNames.contains('examinations')) {
+          db.createObjectStore('examinations', { keyPath: 'id' });
+        }
+        
+        // Version 7: Add fee management stores
+        if (!db.objectStoreNames.contains('feeCategories')) {
+          db.createObjectStore('feeCategories', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('feeCharges')) {
+          const feeChargeStore = db.createObjectStore('feeCharges', { keyPath: 'id' });
+          feeChargeStore.createIndex('studentId', 'studentId', { unique: false });
+          feeChargeStore.createIndex('status', 'status', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('payments')) {
+          const paymentStore = db.createObjectStore('payments', { keyPath: 'id' });
+          paymentStore.createIndex('feeChargeId', 'feeChargeId', { unique: false });
+          paymentStore.createIndex('studentId', 'studentId', { unique: false });
+          paymentStore.createIndex('receiptNumber', 'receiptNumber', { unique: true });
+        }
+        if (!db.objectStoreNames.contains('feeReminders')) {
+          const reminderStore = db.createObjectStore('feeReminders', { keyPath: 'id' });
+          reminderStore.createIndex('studentId', 'studentId', { unique: false });
+        }
+        
+        // Version 8: Add User and TeacherAssignment stores for RBAC
+        if (!db.objectStoreNames.contains('users')) {
+          const userStore = db.createObjectStore('users', { keyPath: 'id' });
+          userStore.createIndex('username', 'username', { unique: true });
+          userStore.createIndex('role', 'role', { unique: false });
+          userStore.createIndex('teacherId', 'teacherId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('teacherAssignments')) {
+          const assignmentStore = db.createObjectStore('teacherAssignments', { keyPath: 'id' });
+          assignmentStore.createIndex('teacherId', 'teacherId', { unique: false });
+          assignmentStore.createIndex('classId', 'classId', { unique: false });
+          assignmentStore.createIndex('subjectId', 'subjectId', { unique: false });
+        }
       };
     });
   }
@@ -125,6 +169,34 @@ export class SAMSIndexedDB {
 
   async deleteStudent(id: string): Promise<void> {
     const store = await this.getStore('students', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Teachers ---
+  async getTeachers(): Promise<Teacher[]> {
+    const store = await this.getStore('teachers');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveTeacher(teacher: Teacher): Promise<void> {
+    const store = await this.getStore('teachers', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(teacher);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteTeacher(id: string): Promise<void> {
+    const store = await this.getStore('teachers', 'readwrite');
     return new Promise((resolve, reject) => {
       const request = store.delete(id);
       request.onsuccess = () => resolve();
@@ -262,13 +334,18 @@ export class SAMSIndexedDB {
     });
   }
 
-  async addLog(action: string, details: string): Promise<void> {
+  async addLog(action: string, details: string, userContext?: { userId: string; userRole: UserRole; username: string }): Promise<void> {
     const store = await this.getStore('logs', 'readwrite');
     const log: ActivityLog = {
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
       action,
       details,
       timestamp: Date.now(),
+      ...(userContext && {
+        userId: userContext.userId,
+        userRole: userContext.userRole,
+        username: userContext.username
+      })
     };
     return new Promise((resolve, reject) => {
       const request = store.put(log);
@@ -429,6 +506,37 @@ export class SAMSIndexedDB {
 
   async deleteResult(id: string): Promise<void> {
     const store = await this.getStore('results', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Examinations ---
+  async getExaminations(): Promise<Examination[]> {
+    const store = await this.getStore('examinations');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: Examination, b: Examination) => b.createdAt - a.createdAt);
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveExamination(examination: Examination): Promise<void> {
+    const store = await this.getStore('examinations', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(examination);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteExamination(id: string): Promise<void> {
+    const store = await this.getStore('examinations', 'readwrite');
     return new Promise((resolve, reject) => {
       const request = store.delete(id);
       request.onsuccess = () => resolve();
@@ -690,14 +798,280 @@ export class SAMSIndexedDB {
     };
     await this.saveSession(activeSession);
 
+    // 7. Seed default users for RBAC prototype (LOCAL DEVELOPMENT ONLY)
+    // ⚠️ WARNING: This is for UI testing only. Not secure authentication.
+    const defaultUsers: User[] = [
+      {
+        id: 'u1',
+        username: 'principal',
+        role: 'principal',
+        createdAt: Date.now(),
+      },
+      {
+        id: 'u2',
+        username: 'admin',
+        role: 'administrator',
+        createdAt: Date.now(),
+      },
+      {
+        id: 'u3',
+        username: 'teacher1',
+        role: 'teacher',
+        teacherId: 't1', // Will be created when teachers module adds teachers
+        createdAt: Date.now(),
+      },
+      {
+        id: 'u4',
+        username: 'parent1',
+        role: 'parent',
+        linkedStudentIds: ['st1', 'st2'], // Linked to Alexander and Sophia
+        createdAt: Date.now(),
+      },
+    ];
+    for (const user of defaultUsers) {
+      await this.saveUser(user);
+    }
+
+    // 8. Seed sample teacher assignments (for teacher access control)
+    // This assumes teacher 't1' teaches Math to Grade 10-A
+    const defaultAssignments: TeacherAssignment[] = [
+      {
+        id: 'ta1',
+        teacherId: 't1',
+        classId: 'c1', // Grade 10-A
+        subjectId: 's1', // Mathematics
+        academicYear: '2026-2027',
+        assignedAt: Date.now(),
+      },
+      {
+        id: 'ta2',
+        teacherId: 't1',
+        classId: 'c2', // Grade 10-B
+        subjectId: 's1', // Mathematics
+        academicYear: '2026-2027',
+        assignedAt: Date.now(),
+      },
+    ];
+    for (const assignment of defaultAssignments) {
+      await this.saveTeacherAssignment(assignment);
+    }
+
     await this.addLog('Database Seeding', 'Initial system data successfully provisioned for the application demonstration.');
     return true;
+  }
+
+  // --- CRUD for Fee Categories ---
+  async getFeeCategories(): Promise<FeeCategory[]> {
+    const store = await this.getStore('feeCategories');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: FeeCategory, b: FeeCategory) => 
+          a.name.localeCompare(b.name)
+        );
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveFeeCategory(category: FeeCategory): Promise<void> {
+    const store = await this.getStore('feeCategories', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(category);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteFeeCategory(id: string): Promise<void> {
+    const store = await this.getStore('feeCategories', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Fee Charges ---
+  async getFeeCharges(): Promise<FeeCharge[]> {
+    const store = await this.getStore('feeCharges');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: FeeCharge, b: FeeCharge) => 
+          b.createdAt - a.createdAt
+        );
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveFeeCharge(charge: FeeCharge): Promise<void> {
+    const store = await this.getStore('feeCharges', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(charge);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteFeeCharge(id: string): Promise<void> {
+    const store = await this.getStore('feeCharges', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Payments ---
+  async getPayments(): Promise<Payment[]> {
+    const store = await this.getStore('payments');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: Payment, b: Payment) => 
+          b.createdAt - a.createdAt
+        );
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async savePayment(payment: Payment): Promise<void> {
+    const store = await this.getStore('payments', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(payment);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deletePayment(id: string): Promise<void> {
+    const store = await this.getStore('payments', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Fee Reminders ---
+  async getFeeReminders(): Promise<FeeReminder[]> {
+    const store = await this.getStore('feeReminders');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const sorted = (request.result || []).sort((a: FeeReminder, b: FeeReminder) => 
+          b.sentAt - a.sentAt
+        );
+        resolve(sorted);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveFeeReminder(reminder: FeeReminder): Promise<void> {
+    const store = await this.getStore('feeReminders', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(reminder);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteFeeReminder(id: string): Promise<void> {
+    const store = await this.getStore('feeReminders', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Users (RBAC) ---
+  async getUsers(): Promise<User[]> {
+    const store = await this.getStore('users');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getUserByUsername(username: string): Promise<User | null> {
+    const store = await this.getStore('users');
+    return new Promise((resolve, reject) => {
+      const index = store.index('username');
+      const request = index.get(username);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveUser(user: User): Promise<void> {
+    const store = await this.getStore('users', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(user);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const store = await this.getStore('users', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- CRUD for Teacher Assignments (RBAC) ---
+  async getTeacherAssignments(): Promise<TeacherAssignment[]> {
+    const store = await this.getStore('teacherAssignments');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getTeacherAssignmentsByTeacherId(teacherId: string): Promise<TeacherAssignment[]> {
+    const store = await this.getStore('teacherAssignments');
+    return new Promise((resolve, reject) => {
+      const index = store.index('teacherId');
+      const request = index.getAll(teacherId);
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveTeacherAssignment(assignment: TeacherAssignment): Promise<void> {
+    const store = await this.getStore('teacherAssignments', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(assignment);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteTeacherAssignment(id: string): Promise<void> {
+    const store = await this.getStore('teacherAssignments', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 
   // Clear all database tables
   async resetDatabase(): Promise<void> {
     const db = await this.init();
-    const stores = ['students', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results', 'studentLogins'];
+    const stores = ['students', 'teachers', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results', 'examinations', 'studentLogins', 'feeCategories', 'feeCharges', 'payments', 'feeReminders', 'users', 'teacherAssignments'];
     const transaction = db.transaction(stores, 'readwrite');
     
     stores.forEach((storeName) => {

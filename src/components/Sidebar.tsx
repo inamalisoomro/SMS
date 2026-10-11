@@ -19,9 +19,14 @@ import {
   X,
   Bell,
   Megaphone,
-  Activity
+  Activity,
+  UserCheck,
+  FileText,
+  DollarSign,
+  Shield
 } from 'lucide-react';
-import { AppSettings } from '../types';
+import { AppSettings, User, TeacherAssignment, Permission } from '../types';
+import { hasPermission } from '../permissions';
 
 interface SidebarProps {
   currentTab: string;
@@ -32,6 +37,8 @@ interface SidebarProps {
   unreadNotifications: number;
   onOpenNotifications: () => void;
   toggleTheme: () => void;
+  currentUser: User | null;
+  teacherAssignments: TeacherAssignment[];
 }
 
 export default function Sidebar({
@@ -42,19 +49,40 @@ export default function Sidebar({
   setIsOpen,
   unreadNotifications,
   onOpenNotifications,
-  toggleTheme
+  toggleTheme,
+  currentUser,
+  teacherAssignments
 }: SidebarProps) {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'attendance', label: 'Take Attendance', icon: CheckSquare },
-    { id: 'students', label: 'Students Directory', icon: Users },
-    { id: 'classes', label: 'Classes & Sections', icon: GraduationCap },
-    { id: 'subjects', label: 'Subjects List', icon: BookOpen },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
-    { id: 'reports', label: 'Reports Hub', icon: FileBarChart2 },
-    { id: 'analytics', label: 'Visual Analytics', icon: BarChart3 },
-    { id: 'settings', label: 'System Settings', icon: Settings },
+  // Map each menu item to its required permission
+  const allMenuItems: Array<{ 
+    id: string; 
+    label: string; 
+    icon: any; 
+    badge?: string;
+    requiredPermission?: Permission;
+  }> = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, requiredPermission: 'view_dashboard' },
+    { id: 'attendance', label: 'Take Attendance', icon: CheckSquare, requiredPermission: 'mark_attendance' },
+    { id: 'students', label: 'Students Directory', icon: Users, requiredPermission: 'view_students' },
+    { id: 'teachers', label: 'Teachers Directory', icon: UserCheck, requiredPermission: 'view_teachers' },
+    { id: 'classes', label: 'Classes & Sections', icon: GraduationCap, requiredPermission: 'view_classes' },
+    { id: 'subjects', label: 'Subjects List', icon: BookOpen, requiredPermission: 'view_subjects' },
+    { id: 'fees', label: 'Fee Management', icon: DollarSign, requiredPermission: 'view_fees' },
+    { id: 'examinations', label: 'Examinations', icon: FileText, requiredPermission: 'view_examinations' },
+    { id: 'announcements', label: 'Announcements', icon: Megaphone, requiredPermission: 'view_announcements' },
+    { id: 'reports', label: 'Reports Hub', icon: FileBarChart2, requiredPermission: 'view_reports' },
+    { id: 'analytics', label: 'Visual Analytics', icon: BarChart3, requiredPermission: 'view_analytics' },
+    { id: 'parent-portal', label: 'Parent Portal Preview', icon: Shield, badge: 'LOCAL', requiredPermission: 'view_parent_portal' },
+    { id: 'settings', label: 'System Settings', icon: Settings, requiredPermission: 'view_settings' },
   ];
+
+  // Filter menu items based on user permissions
+  const menuItems = currentUser 
+    ? allMenuItems.filter(item => {
+        if (!item.requiredPermission) return true;
+        return hasPermission(currentUser, item.requiredPermission);
+      })
+    : allMenuItems; // Show all if no user selected (shouldn't happen in practice)
 
   const handleTabClick = (tabId: string) => {
     setCurrentTab(tabId);
@@ -167,7 +195,12 @@ export default function Sidebar({
                 }`}
               >
                 <Icon size={15} className={isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500'} />
-                <span>{item.label}</span>
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.badge && (
+                  <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase bg-amber-500 text-white rounded">
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}

@@ -21,7 +21,8 @@ import {
   Camera,
   Sparkles,
   Users,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft
 } from 'lucide-react';
 import { Student, Class, Subject, AttendanceRecord, AttendanceStatus } from '../types';
 import QRScannerAttendance from './QRScannerAttendance';
@@ -32,6 +33,7 @@ interface AttendanceViewProps {
   subjects: Subject[];
   attendance: AttendanceRecord[];
   onSaveAttendance: (records: AttendanceRecord[]) => Promise<void>;
+  onNavigate?: (tab: string) => void;
 }
 
 export default function AttendanceView({
@@ -40,6 +42,7 @@ export default function AttendanceView({
   subjects,
   attendance,
   onSaveAttendance,
+  onNavigate,
 }: AttendanceViewProps) {
   // Mode selection: 'manual' | 'qr_scanner'
   const [activeMode, setActiveMode] = useState<'manual' | 'qr_scanner'>('manual');
@@ -203,18 +206,29 @@ export default function AttendanceView({
     <div className="space-y-4 max-w-7xl mx-auto">
       {/* View Title & Mode Switching Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight flex items-center gap-2">
-            <span>Roster Entry & Attendance</span>
-            {activeMode === 'qr_scanner' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                QR Scanner Active
-              </span>
-            )}
-          </h2>
-          <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Log student attendance using manual checkboxes or instant webcam QR code scanning with audio feedback.
-          </p>
+        <div className="flex items-center gap-3">
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div>
+            <h2 className="font-sans font-bold text-slate-800 dark:text-slate-100 text-xl tracking-tight flex items-center gap-2">
+              <span>Roster Entry & Attendance</span>
+              {activeMode === 'qr_scanner' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                  QR Scanner Active
+                </span>
+              )}
+            </h2>
+            <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Log student attendance using manual checkboxes or instant webcam QR code scanning with audio feedback.
+            </p>
+          </div>
         </div>
 
         {/* Mode Toggle Controls */}
