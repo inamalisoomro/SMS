@@ -4,7 +4,7 @@
 **Version:** 2.0.0  
 **Framework:** React 19 + TypeScript + Vite  
 **Database:** IndexedDB (Offline-first local storage)  
-**Email System:** EmailJS API (Client-side email notifications)  
+**Email System:** EmailJS API (Client-side email noti+fications)  
 **Styling:** Tailwind CSS v4 with animations (Motion/Framer Motion)  
 **Icons:** Lucide React  
 **AI Integration:** Google Gemini AI (Ready but not actively used)  

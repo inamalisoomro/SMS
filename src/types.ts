@@ -24,6 +24,12 @@ export interface Student {
   parentEmail?: string; // Primary parent email for notifications
   secondaryParentEmail?: string; // Secondary parent email
   registeredAt?: number; // Timestamp when student was first registered
+  // WhatsApp fields (v4)
+  parentWhatsApp?: string;
+  secondaryParentWhatsApp?: string;
+  whatsappOptIn?: boolean;
+  whatsappOptInAt?: number;
+  whatsappOptInSource?: 'manual' | 'csv' | 'reply' | 'form';
 }
 
 export interface Teacher {
@@ -81,6 +87,21 @@ export interface AppSettings {
   emailJsServiceId?: string; // EmailJS service ID
   emailJsTemplateId?: string; // EmailJS template ID
   currency?: string; // Currency symbol for fee management (default: '$')
+  // WhatsApp settings (v4)
+  whatsappEnabled?: boolean;
+  whatsappGatewayUrl?: string;
+  whatsappApiKey?: string;
+  whatsappDefaultCountryCode?: string;
+  whatsappAutoSendAttendance?: boolean;
+  whatsappAttendanceStatuses?: ('absent' | 'late' | 'leave')[];
+  whatsappQuietHours?: { enabled: boolean; start: string; end: string };
+  whatsappTypeToggles?: Partial<Record<NotificationType, boolean>>;
+  whatsappTemplateOverrides?: Record<string, string>;
+  whatsappBulkConfirmThreshold?: number;
+  whatsappLowAttendanceThreshold?: number;
+  whatsappFallbackToContactNumber?: boolean;
+  whatsappAdminPinHash?: string;
+  whatsappAdminPinSalt?: string;
 }
 
 export interface AcademicSession {
@@ -497,4 +518,113 @@ export interface RestoreResult {
   mergeResult?: MergeResult;
   errors: string[];
   warnings: string[];
+}
+
+// ==================== WHATSAPP TYPES (v4) ====================
+
+export type WhatsAppOutboxStatus =
+  | 'queued'
+  | 'sending'
+  | 'accepted'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'failed'
+  | 'cancelled'
+  | 'opted_out'
+  | 'invalid';
+
+export interface WhatsAppOutboxItem {
+  id: string;
+  clientId: string;
+  type: NotificationType;
+  studentId?: string;
+  recipientName: string;
+  to: string;
+  template: string;
+  language: string;
+  params: string[];
+  dedupeKey: string;
+  status: WhatsAppOutboxStatus;
+  messageId?: string;
+  error?: string;
+  retryable?: boolean;
+  retryCount: number;
+  nextAttemptAt?: number;
+  createdAt: number;
+  updatedAt: number;
+  scheduledFor?: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface WhatsAppInboundMessage {
+  id: string;
+  from: string;
+  studentId?: string;
+  text: string;
+  receivedAt: number;
+  read: boolean;
+  replyWindowEndsAt: number;
+}
+
+export interface SyncState {
+  key: string;
+  value: number | string;
+}
+
+export type NotificationChannel = 'email' | 'whatsapp';
+
+export interface DispatchRecipientSkip {
+  studentId: string;
+  recipientName: string;
+  reason: 'no_number' | 'invalid_number' | 'no_opt_in' | 'opted_out' | 'duplicate';
+}
+
+export interface DispatchResult {
+  emailSent: number;
+  emailFailed: number;
+  whatsappQueued: number;
+  whatsappSkipped: DispatchRecipientSkip[];
+}
+
+export interface GatewayMessageResult {
+  clientId: string;
+  result: 'accepted' | 'duplicate' | 'invalid_number' | 'rate_limited' | 'cap_reached' | 'opted_out' | 'failed';
+  messageId?: string;
+  error?: { code: number; message: string; retryable: boolean };
+}
+
+export interface GatewayEvent {
+  id: number;
+  type: 'status' | 'inbound' | 'optout' | 'optin';
+  waMessageId?: string;
+  fromNumber?: string;
+  toNumber?: string;
+  status?: string;
+  payload?: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface GatewayTemplate {
+  name: string;
+  category: string;
+  language: string;
+  paramCount: number;
+  paramLabels: string[];
+  body: string;
+  approvalStatus: string;
+  metaCategory: string;
+}
+
+export interface GatewayDiagnostics {
+  mode: 'live' | 'mock';
+  version: string;
+  apiVersion: string;
+  tokenValid: boolean;
+  phoneInfo: Record<string, unknown> | null;
+  webhookLastSeen: number | null;
+  dailyUsage: number;
+  dailyCap: number;
+  templates: string[];
+  requestId?: string;
 }

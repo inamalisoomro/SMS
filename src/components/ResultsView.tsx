@@ -73,14 +73,19 @@ export default function ResultsView({ students, classes, subjects, settings, tri
       id: editItem?.id ?? crypto.randomUUID(),
       studentId: formStudentId,
       classId: student.classId,
+      examinationId: '',
       examName: formExamName.trim(),
       examDate: formExamDate,
+      academicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
       subjects: subjectDetails,
       totalObtained, totalMaxMarks,
       percentage,
-      grade: calcGrade(percentage),
+      overallGrade: calcGrade(percentage),
+      isDraft: false,
       remarks: formRemarks || undefined,
       publishedAt: Date.now(),
+      createdAt: editItem ? (editItem as any).createdAt ?? Date.now() : Date.now(),
+      updatedAt: Date.now(),
     };
     await dbInstance.saveResult(result);
     await dbInstance.addLog(editItem ? 'Result Updated' : 'Result Published', `${formExamName} for ${student.name}`);

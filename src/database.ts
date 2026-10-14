@@ -116,6 +116,25 @@ export class SAMSIndexedDB {
           assignmentStore.createIndex('classId', 'classId', { unique: false });
           assignmentStore.createIndex('subjectId', 'subjectId', { unique: false });
         }
+
+        // ── v4 WhatsApp stores ──────────────────────────────────────────────
+        if (!db.objectStoreNames.contains('whatsappOutbox')) {
+          const outbox = db.createObjectStore('whatsappOutbox', { keyPath: 'id' });
+          outbox.createIndex('status', 'status', { unique: false });
+          outbox.createIndex('createdAt', 'createdAt', { unique: false });
+          outbox.createIndex('dedupeKey', 'dedupeKey', { unique: true });
+          outbox.createIndex('studentId', 'studentId', { unique: false });
+          outbox.createIndex('type', 'type', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('whatsappInbox')) {
+          const inbox = db.createObjectStore('whatsappInbox', { keyPath: 'id' });
+          inbox.createIndex('from', 'from', { unique: false });
+          inbox.createIndex('receivedAt', 'receivedAt', { unique: false });
+          inbox.createIndex('read', 'read', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('syncState')) {
+          db.createObjectStore('syncState', { keyPath: 'key' });
+        }
       };
     });
   }
@@ -1071,9 +1090,9 @@ export class SAMSIndexedDB {
   // Clear all database tables
   async resetDatabase(): Promise<void> {
     const db = await this.init();
-    const stores = ['students', 'teachers', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results', 'examinations', 'studentLogins', 'feeCategories', 'feeCharges', 'payments', 'feeReminders', 'users', 'teacherAssignments'];
+    const allStores = ['students', 'teachers', 'classes', 'subjects', 'attendance', 'sessions', 'logs', 'settings', 'notifications', 'homework', 'announcements', 'results', 'examinations', 'studentLogins', 'feeCategories', 'feeCharges', 'payments', 'feeReminders', 'users', 'teacherAssignments', 'whatsappOutbox', 'whatsappInbox', 'syncState'];
+    const stores = allStores.filter(s => db.objectStoreNames.contains(s));
     const transaction = db.transaction(stores, 'readwrite');
-    
     stores.forEach((storeName) => {
       transaction.objectStore(storeName).clear();
     });
@@ -1083,6 +1102,110 @@ export class SAMSIndexedDB {
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  // ── WhatsApp Outbox ────────────────────────────────────────────────────────
+  async getWhatsAppOutbox(statusFilter?: string[]): Promise<any[]> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappOutbox')) return [];
+    const store = await this.getStore('whatsappOutbox');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        let items = request.result || [];
+        if (statusFilter && statusFilter.length > 0) {
+          items = items.filter((i: any) => statusFilter.includes(i.status));
+        }
+        resolve(items.sort((a: any, b: any) => b.createdAt - a.createdAt));
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveWhatsAppOutboxItem(item: any): Promise<void> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappOutbox')) return;
+    const store = await this.getStore('whatsappOutbox', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(item);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getWhatsAppOutboxItemByDedupeKey(dedupeKey: string): Promise<any | null> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappOutbox')) return null;
+    const store = await this.getStore('whatsappOutbox');
+    return new Promise((resolve) => {
+      const index = store.index('dedupeKey');
+      const request = index.get(dedupeKey);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    });
+  }
+
+  // ── WhatsApp Inbox ─────────────────────────────────────────────────────────
+  async getWhatsAppInbox(): Promise<any[]> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappInbox')) return [];
+    const store = await this.getStore('whatsappInbox');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const items = (request.result || []).sort((a: any, b: any) => b.receivedAt - a.receivedAt);
+        resolve(items);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveWhatsAppInboundMessage(msg: any): Promise<void> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappInbox')) return;
+    const store = await this.getStore('whatsappInbox', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put(msg);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getUnreadWhatsAppInboxCount(): Promise<number> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('whatsappInbox')) return 0;
+    const store = await this.getStore('whatsappInbox');
+    return new Promise((resolve) => {
+      try {
+        const index = store.index('read');
+        const request = index.count(IDBKeyRange.only(false));
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => resolve(0);
+      } catch { resolve(0); }
+    });
+  }
+
+  // ── SyncState ──────────────────────────────────────────────────────────────
+  async getSyncState(key: string): Promise<number | string | null> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('syncState')) return null;
+    const store = await this.getStore('syncState');
+    return new Promise((resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve((request.result as any)?.value ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async setSyncState(key: string, value: number | string): Promise<void> {
+    const db = await this.init();
+    if (!db.objectStoreNames.contains('syncState')) return;
+    const store = await this.getStore('syncState', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put({ key, value });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
     });
   }
 }
