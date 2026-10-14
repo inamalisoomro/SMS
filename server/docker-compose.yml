@@ -1,0 +1,41 @@
+version: '3.9'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sams-whatsapp-gateway:latest
+    container_name: sams-gateway
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persistent SQLite database — never lose data on container restart
+      - gateway-data:/app/data
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Copy values from your .env file or use Docker secrets
+      # Uncomment and fill in:
+      # ALLOWED_ORIGINS: "https://yourdomain.com"
+      # API_KEYS: "your_32_char_key_1,your_32_char_key_2"
+      # WHATSAPP_MODE: "live"
+      # WHATSAPP_TOKEN: "your_token"
+      # WHATSAPP_PHONE_NUMBER_ID: "your_phone_id"
+      # WHATSAPP_BUSINESS_ACCOUNT_ID: "your_waba_id"
+      # WHATSAPP_APP_SECRET: "your_app_secret"
+      # WHATSAPP_VERIFY_TOKEN: "your_verify_token"
+      DB_PATH: /app/data/sams_whatsapp.db
+      # Optional: serve the built frontend from dist/
+      # SERVE_STATIC: "true"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  gateway-data:
+    driver: local
