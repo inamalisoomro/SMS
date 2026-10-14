@@ -29,6 +29,37 @@
   background: #94a3b8;
 }
 
+/* Role Selector Dropdown Options - Force visible styling */
+select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  padding: 8px 12px !important;
+}
+
+select option:hover,
+select option:checked,
+select option:focus {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+/* Simple fade animation for dropdown */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
 /* Print Styles for Student CR80 ID Badges */
 @media print {
   html, body {

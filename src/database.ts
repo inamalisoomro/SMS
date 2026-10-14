@@ -594,9 +594,19 @@ export class SAMSIndexedDB {
   // Seed default data if database is empty
   async seedIfEmpty(): Promise<boolean> {
     const students = await this.getStudents();
-    if (students.length > 0) return false; // Already seeded
+    const existingUsers = await this.getUsers();
+    
+    // If both students AND users exist, no seeding needed
+    if (students.length > 0 && existingUsers.length > 0) return false;
 
     console.log('Seeding initial SAMS data to IndexedDB...');
+    
+    // If students exist but users don't, seed only users
+    if (students.length > 0 && existingUsers.length === 0) {
+      console.log('Seeding demo users for RBAC...');
+      await this.seedDemoUsers();
+      return true;
+    }
 
     // 1. Seed Classes
     const defaultClasses: Class[] = [
@@ -817,7 +827,18 @@ export class SAMSIndexedDB {
     };
     await this.saveSession(activeSession);
 
-    // 7. Seed default users for RBAC prototype (LOCAL DEVELOPMENT ONLY)
+    // 7. Seed demo users and teacher assignments
+    await this.seedDemoUsers();
+
+    await this.addLog('Database Seeding', 'Initial system data successfully provisioned for the application demonstration.');
+    return true;
+  }
+
+  /**
+   * Seeds demo users for RBAC testing (called separately if users are missing)
+   */
+  private async seedDemoUsers(): Promise<void> {
+    // Seed default users for RBAC prototype (LOCAL DEVELOPMENT ONLY)
     // ⚠️ WARNING: This is for UI testing only. Not secure authentication.
     const defaultUsers: User[] = [
       {
@@ -851,8 +872,7 @@ export class SAMSIndexedDB {
       await this.saveUser(user);
     }
 
-    // 8. Seed sample teacher assignments (for teacher access control)
-    // This assumes teacher 't1' teaches Math to Grade 10-A
+    // Seed sample teacher assignments (for teacher access control)
     const defaultAssignments: TeacherAssignment[] = [
       {
         id: 'ta1',
@@ -874,9 +894,6 @@ export class SAMSIndexedDB {
     for (const assignment of defaultAssignments) {
       await this.saveTeacherAssignment(assignment);
     }
-
-    await this.addLog('Database Seeding', 'Initial system data successfully provisioned for the application demonstration.');
-    return true;
   }
 
   // --- CRUD for Fee Categories ---

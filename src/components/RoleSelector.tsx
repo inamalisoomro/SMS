@@ -106,7 +106,7 @@ export default function RoleSelector({
 }
 
 /**
- * Compact inline variant for header/navbar
+ * Compact inline variant for header/navbar - Professional clean version
  */
 export function RoleSelectorCompact({
   currentUser,
@@ -114,6 +114,8 @@ export function RoleSelectorCompact({
   onUserChange,
   className = ''
 }: RoleSelectorProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+
   const getRoleIconComponent = (role: string) => {
     switch (role) {
       case 'principal':
@@ -129,42 +131,152 @@ export function RoleSelectorCompact({
     }
   };
 
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'principal':
+        return 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30';
+      case 'administrator':
+        return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30';
+      case 'teacher':
+        return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30';
+      case 'parent':
+        return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30';
+      default:
+        return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/30';
+    }
+  };
+
   const Icon = currentUser ? getRoleIconComponent(currentUser.role) : Lock;
+  const currentRoleColor = currentUser ? getRoleColor(currentUser.role) : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30';
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.role-selector-container')) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const handleSelectRole = (user: User) => {
+    onUserChange(user);
+    setIsOpen(false);
+  };
 
   return (
-    <div className={`relative group ${className}`}>
-      {/* Compact selector */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-500/30 rounded-lg">
-        <AlertTriangle size={12} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
-        <Icon size={14} className="text-amber-700 dark:text-amber-300 flex-shrink-0" />
-        <select
-          value={currentUser?.id || ''}
-          onChange={(e) => {
-            const user = availableUsers.find(u => u.id === e.target.value);
-            if (user) onUserChange(user);
-          }}
-          className="text-xs bg-transparent border-none focus:outline-none focus:ring-0 text-amber-900 dark:text-amber-100 font-semibold cursor-pointer appearance-none pr-6"
+    <div className={`relative role-selector-container ${className}`}>
+      {/* Trigger Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`
+          flex items-center gap-2 px-3 py-1.5 rounded-lg
+          border transition-all duration-200
+          bg-white dark:bg-slate-800
+          border-slate-200 dark:border-slate-700
+          hover:border-slate-300 dark:hover:border-slate-600
+          hover:shadow-sm
+          ${isOpen ? 'shadow-md border-slate-300 dark:border-slate-600' : ''}
+        `}
+      >
+        {/* Role Icon */}
+        <div className={`p-1 rounded ${currentRoleColor}`}>
+          <Icon size={14} />
+        </div>
+
+        {/* Role Name */}
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          {currentUser ? getRoleDisplayName(currentUser.role) : 'Select Role'}
+        </span>
+
+        {/* Dropdown Arrow */}
+        <svg 
+          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
         >
-          {!currentUser && <option value="">Role</option>}
-          {availableUsers.map(user => (
-            <option key={user.id} value={user.id}>
-              {getRoleDisplayName(user.role)}
-            </option>
-          ))}
-        </select>
-        <svg className="w-3 h-3 text-amber-600 dark:text-amber-400 absolute right-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
-      </div>
+      </button>
 
-      {/* Tooltip on hover */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-amber-900 text-white text-[9px] rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-        <div className="flex items-center gap-1 mb-1">
-          <Lock size={10} />
-          <strong>Development Mode Only</strong>
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-fadeIn">
+          {/* Header */}
+          <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-2">
+              <Lock size={12} className="text-amber-600 dark:text-amber-400" />
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Switch Role</span>
+              <span className="ml-auto text-[10px] text-slate-500 dark:text-slate-400">Dev Mode</span>
+            </div>
+          </div>
+
+          {/* Role List */}
+          <div className="py-1">
+            {availableUsers.map((user) => {
+              const UserIcon = getRoleIconComponent(user.role);
+              const isSelected = currentUser?.id === user.id;
+              const roleColor = getRoleColor(user.role);
+
+              return (
+                <button
+                  key={user.id}
+                  onClick={() => handleSelectRole(user)}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2
+                    transition-colors duration-150
+                    ${isSelected 
+                      ? 'bg-slate-100 dark:bg-slate-700/50' 
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'
+                    }
+                  `}
+                >
+                  {/* Icon */}
+                  <div className={`p-1.5 rounded ${roleColor}`}>
+                    <UserIcon size={16} />
+                  </div>
+
+                  {/* Role Info */}
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                        {getRoleDisplayName(user.role)}
+                      </span>
+                      {isSelected && (
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {user.username}
+                    </span>
+                  </div>
+
+                  {/* Checkmark */}
+                  {isSelected && (
+                    <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-200 dark:border-amber-800/50">
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
+              <AlertTriangle size={10} className="inline mr-1" />
+              Prototype mode - Not production authentication
+            </p>
+          </div>
         </div>
-        This selector is NOT secure authentication. For production, implement real backend auth with verified user identity.
-      </div>
+      )}
     </div>
   );
 }
